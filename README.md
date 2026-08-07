@@ -139,12 +139,24 @@ Publishing a new version (maintainers only): [RELEASING.md](RELEASING.md).
 | Installed profile packs | `~/.local/share/kcia/packs/` | no |
 | Per-repo state | `<your project>/.ai/` | partly — see below |
 
-Inside a project you work on, kcia writes:
+Inside a project you work on, everything kcia generates is **regenerable output and is
+not committed**. `kcia init` adds it to that project's `.gitignore` for you:
 
-- `.ai/manifest.yaml` — active profiles and their roots. **Commit this.**
-- `.ai/profiles/` — profiles specific to that repo. **Commit this.**
-- `.ai/local/` — session state and repo-scoped agent overrides. **Gitignore this.**
-- `.ai/generated/`, `.ai/cache/` — regenerable output. **Gitignore these.**
+```gitignore
+# kcia — generated, do not commit
+.ai/*
+!.ai/profiles/
+CLAUDE.md
+AGENTS.md
+.cursor/rules/
+```
+
+So a teammate cloning your project sees no kcia files at all; they run `kcia init` once
+and get their own. Nothing to configure, nothing to keep in sync by hand.
+
+The single exception is `.ai/profiles/` — profiles you write for that repo are *source*,
+not output, so they stay tracked and travel with the project. That is what the `!` line
+is for.
 
 Nothing from kcia's own dependency tree is installed into your project, and your project
 needs no Python.
@@ -156,7 +168,7 @@ Run kcia from inside the project you want it to work on:
 ```bash
 cd /path/to/your/project
 
-kcia profile detect                              # what technologies are here
+kcia init                                        # detect, generate, gitignore
 kcia agent set planner claude --model claude-opus-5
 kcia agent set builder cursor --model claude-sonnet-5
 kcia agent show
@@ -166,21 +178,22 @@ kcia wave list
 kcia wave run                                    # runs the next pending wave
 ```
 
+`kcia init` detects the technologies in the repository, writes `.ai/manifest.yaml`, the
+composed profile bundles, and the provider adapters (`CLAUDE.md`, `AGENTS.md`,
+`.cursor/rules/*.mdc`), and adds all of it to `.gitignore`. It is idempotent: run it again
+after updating kcia and it rewrites only what changed. Use `--yes` in CI or non-interactive
+shells, and `--no-gitignore` if you would rather manage the ignore rules yourself.
+
 `kcia agent set` without `--scope repo` writes to `~/.config/kcia/config.yaml` and applies
 to every project. Use `--scope repo` to override the choice for one repository only
 (written to `.ai/local/agents.yaml`, gitignored).
 
 ## Status
 
-Implemented and usable: profiles (detection, inheritance, packs, resolution), providers
-(Claude and Cursor adapters, agent configuration), and the wave engine (session, lock,
-prompt composition, multi-profile validation).
+Implemented and usable: `kcia init` (detection, manifest, bundles, adapters, gitignore),
+profiles (detection, inheritance, packs, resolution), providers (Claude and Cursor
+adapters, agent configuration), and the wave engine (session, lock, prompt composition,
+multi-profile validation).
 
-Not yet implemented — these commands exit 1:
-
-- `kcia init` — so `.ai/manifest.yaml` must be written by hand for now. Without it,
-  `kcia profile explain` and the `implementation` wave's validation step will not run.
-- `kcia doctor`, `kcia sync`, `kcia ask`, `kcia branch`, `kcia auth`, `kcia mcp`.
-
-No adapters (`CLAUDE.md`, `.cursor/rules/*.mdc`) are generated yet; the templates exist
-but nothing renders them.
+Not yet implemented — these commands exit 1: `kcia doctor`, `kcia sync`, `kcia ask`,
+`kcia branch`, `kcia auth`, `kcia mcp`.
