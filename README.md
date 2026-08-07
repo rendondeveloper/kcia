@@ -8,34 +8,52 @@ Control plane and CLI for development agents (Claude Code, Cursor, and future pr
 - **Agents** — two roles (`planner`, `builder`), each mapped to a `(provider, model)` pair.
 - **Waves** — five sequential pipeline steps from understanding through documentation.
 
+## Requirements
+
+- Python 3.11+
+- `git`
+- At least one provider CLI: `claude` (Claude Code) or `cursor-agent` (Cursor)
+
 ## Install
 
 You install kcia **once, globally**. You do not install it into each project you work
 on — see [Where kcia lives](#where-kcia-lives) below.
 
+**1. Clone the repository.** Keep the clone; it is not disposable (see
+[Why not `pipx install`](#why-not-pipx-install)).
+
 ```bash
-git clone https://github.com/<owner>/kcia.git ~/tools/kcia
+git clone https://github.com/rendondeveloper/kcia.git ~/tools/kcia
 cd ~/tools/kcia
+```
+
+**2. Create the virtualenv and install the CLI in editable mode.**
+
+```bash
 python3 -m venv .venv
 .venv/bin/pip install -e "./cli[dev]"
 ```
 
-Put the CLI on your PATH:
+**3. Put the CLI on your PATH.**
 
 ```bash
-# ~/.zshrc
-export PATH="$HOME/tools/kcia/.venv/bin:$PATH"
+echo 'export PATH="$HOME/tools/kcia/.venv/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
-Verify:
+**4. Verify.**
 
 ```bash
-kcia --version   # kcia 0.1.0
+kcia --version        # kcia 0.1.0
+kcia profile list     # backend-dart / mobile-flutter / web-flutter
 ```
+
+If `profile list` prints nothing, the CLI cannot find `control-plane/` — you are running
+a copy installed outside the clone. Redo step 2 from inside the clone.
 
 ### Why not `pipx install`
 
-`pipx install ./cli` and `pipx install "git+https://github.com/<owner>/kcia.git#subdirectory=cli"`
+`pipx install ./cli` and `pipx install "git+https://github.com/rendondeveloper/kcia.git#subdirectory=cli"`
 both install the CLI but produce a **broken runtime**. `control-plane/` lives outside
 `cli/`, so no Python build backend can bundle it into the wheel; `control_plane_root()`
 then resolves to a path that does not exist and every command that needs profiles,
@@ -46,20 +64,71 @@ can find it. Packaged installs will be supported once `kcia sync` lands (see Sta
 
 ## Updating
 
-New versions are published to `master`. Update by resetting your clone to it:
+New versions are published to `master`. Updating is done **in your clone**, never in the
+projects you use kcia on.
 
 ```bash
 cd ~/tools/kcia
+
+# 1. Take master exactly as published, discarding local changes.
 git fetch origin
 git reset --hard origin/master
+git clean -fd
+
+# 2. Reinstall so the CLI picks up the new code.
 .venv/bin/pip install -e "./cli[dev]" --force-reinstall --no-deps
+
+# 3. Confirm.
+kcia --version
+kcia profile list
+```
+
+`git reset --hard` discards anything you changed inside the clone. That is intended: the
+clone is a distribution copy, not a place to edit. Your own projects are untouched.
+
+Check `CHANGELOG.md` after updating. Two versions move independently: the CLI version
+(`kcia --version`) and the control plane (`control-plane/VERSION` — profiles, waves,
+templates). If the control plane changed, re-run detection in each project to pick up the
+new guidance:
+
+```bash
+cd /path/to/your/project
+kcia profile detect
+```
+
+### Full reset
+
+If the CLI still misbehaves after updating, rebuild the environment from scratch:
+
+```bash
+cd ~/tools/kcia
+find . -name __pycache__ -type d -prune -exec rm -rf {} +
+rm -rf .venv
+python3 -m venv .venv
+.venv/bin/pip install -e "./cli[dev]"
 kcia --version
 ```
 
-Nothing to do in the projects you use kcia on. If the control plane changed (profiles,
-waves, templates), re-run `kcia profile detect` there to pick it up.
+In a project where generated output looks stale:
 
-Full reset instructions and the maintainer publish steps: [RELEASING.md](RELEASING.md).
+```bash
+cd /path/to/your/project
+rm -rf .ai/generated .ai/cache
+kcia profile detect
+```
+
+Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours and are committed.
+
+### Uninstall
+
+```bash
+rm -rf ~/tools/kcia                  # the clone and its venv
+rm -rf ~/.config/kcia                # agent preferences
+rm -rf ~/.local/share/kcia           # installed profile packs
+# then remove the PATH line from ~/.zshrc
+```
+
+Publishing a new version (maintainers only): [RELEASING.md](RELEASING.md).
 
 ## Where kcia lives
 
