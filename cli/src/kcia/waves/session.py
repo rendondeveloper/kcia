@@ -130,6 +130,7 @@ class Session:
         title: str | None = None,
         ticket_key: str | None = None,
         active_profiles: list[str] | None = None,
+        scope: list[str] | None = None,
     ) -> Session:
         repo_root = repo_root.resolve()
         context_dir(repo_root).mkdir(parents=True, exist_ok=True)
@@ -143,6 +144,7 @@ class Session:
             "title": title or text,
             "created_at": _now_iso(),
             "branch": None,
+            "scope": scope or [],
         }
         session = cls(
             repo_root=repo_root,

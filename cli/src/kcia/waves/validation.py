@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pathspec
 
+from kcia.profiles.commands import resolve_commands
 from kcia.profiles.inheritance import resolve_inheritance
 from kcia.profiles.loader import load_registry
-from kcia.profiles.predicates import _ReadCache, evaluate
 from kcia.profiles.resolver import resolve_for_task
 from kcia.profiles.schema import Manifest
 from kcia.waves.session import Session
@@ -77,7 +77,7 @@ def build_validation_plan(
         )
         roots = manifest_entry.roots if manifest_entry else ["."]
         cwd = _profile_cwd(repo_root, roots)
-        commands = _resolve_commands(resolved, manifest_entry, loaded.root, cwd)
+        commands = resolve_commands(resolved, manifest_entry, loaded.root, cwd)
 
         required = resolved.validation.get("required_commands", [])
         for command_name in required:
@@ -180,18 +180,3 @@ def _profile_cwd(repo_root: Path, roots: list[str]) -> Path:
     return repo_root / root
 
 
-def _resolve_commands(
-    resolved: object,
-    manifest_entry: object | None,
-    profile_root: Path,
-    cwd: Path,
-) -> dict[str, str]:
-    commands = dict(resolved.commands)  # type: ignore[attr-defined]
-    cache = _ReadCache()
-    for override in resolved.command_overrides:  # type: ignore[attr-defined]
-        when = override.get("when", {})
-        if evaluate(when, cwd, cache=cache):
-            commands.update(override.get("commands", {}))
-    if manifest_entry is not None:
-        commands.update(manifest_entry.commands)
-    return commands

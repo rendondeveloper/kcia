@@ -14,17 +14,35 @@ from kcia.waves.session import Session, classify_input, load_manifest_raw
 app = typer.Typer(help="Manage tasks and work items.", no_args_is_help=True)
 
 
+def _validate_scope(repo: Path, scope: list[str]) -> None:
+    for item in scope:
+        target = repo / item
+        if not target.exists():
+            typer.echo(
+                f"Scope path does not exist: {item!r} (resolved to {target}). "
+                "Use a path relative to the repository root."
+            )
+            raise typer.Exit(code=1)
+
+
 @app.command("init")
 def task_init(
     text: str = typer.Argument(..., help="Ticket key or free-form prompt."),
     ticket: bool = typer.Option(False, "--ticket", help="Force ticket mode."),
     prompt: bool = typer.Option(False, "--prompt", help="Force prompt mode."),
     profile: Optional[list[str]] = typer.Option(None, "--profile", help="Active profile ids."),
+    scope: Optional[list[str]] = typer.Option(
+        None, "--scope", help="Limit active profiles to these repo-relative paths."
+    ),
 ) -> None:
     repo = find_repo_root()
     if repo is None:
         typer.echo("No git repository found. Initialize git or run from a repo root.")
         raise typer.Exit(code=1)
+
+    scope_paths = scope or []
+    if scope_paths:
+        _validate_scope(repo, scope_paths)
 
     manifest_raw = load_manifest_raw(repo)
     mode = classify_input(text, manifest_raw, ticket=ticket, prompt=prompt)
@@ -35,6 +53,7 @@ def task_init(
         mode=mode,
         ticket_key=ticket_key,
         active_profiles=profile or [],
+        scope=scope_paths,
     )
     typer.echo(f"Task {session.task['id']} initialized in {mode} mode.")
 
@@ -59,6 +78,9 @@ def task_show(
     typer.echo(f"id: {task['id']}")
     typer.echo(f"mode: {task['mode']}")
     typer.echo(f"title: {task['title']}")
+    scope = task.get("scope") or []
+    if scope:
+        typer.echo(f"scope: {', '.join(scope)}")
 
     usage = collect_usage(session.waves)
     if usage.total:

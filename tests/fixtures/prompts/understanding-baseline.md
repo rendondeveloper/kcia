@@ -238,6 +238,17 @@ TODO: describe the architecture.
 - Never force-push.
 - Treat profile commands as defaults until the repository confirms its real commands.
 
+## Repository map
+
+Layout: monorepo. Detected 4 packages.
+
+| Path | Profile | Test | Lint |
+|---|---|---|---|
+| packages/api | backend-dart | `fvm dart test` | `fvm dart analyze` |
+| packages/app_mobile | mobile-flutter | `fvm flutter test` | `fvm flutter analyze` |
+| packages/app_web | web-flutter | `fvm flutter test` | `fvm flutter analyze` |
+| packages/shared | backend-dart | `fvm dart test` | `fvm dart analyze` |
+
 ## Profile bundle: backend-dart
 
 # Estándares de código Dart

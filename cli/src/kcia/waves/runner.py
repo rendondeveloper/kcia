@@ -13,7 +13,7 @@ from kcia.providers.catalog import load_catalog
 from kcia.providers.registry import get_adapter
 from kcia.providers.runner import run_provider
 from kcia.waves.definitions import WaveDefinition, get_wave, load_waves
-from kcia.waves.prompts import build_prompt
+from kcia.waves.prompts import build_prompt, build_prompt_with_stats
 from kcia.waves.session import Session, load_manifest, runs_dir
 from kcia.waves.validation import build_validation_plan, run_validation
 
@@ -107,7 +107,15 @@ def run_wave(
                 f"provider '{agent.provider}' is not installed. {entry.install_hint}"
             )
 
-        prompt = build_prompt(wave, session, validation_error=validation_error)
+        prompt, prompt_stats = build_prompt_with_stats(
+            wave, session, validation_error=validation_error
+        )
+        if prompt_stats.dropped_tokens:
+            dropped_count = sum(1 for section in prompt_stats.sections if section.dropped)
+            print(
+                f"warning: dropped {dropped_count} reference(s) to fit the context budget",
+                flush=True,
+            )
         prompt_path = _write_prompt_file(session, wave_id, attempts, prompt)
 
         req = RunRequest(
@@ -153,7 +161,7 @@ def run_wave(
                 failed_profiles = {failure.step.profile_id for failure in report.failures}
                 if wave.id != "implementation":
                     raise RuntimeError(current_error)
-                retry_prompt = build_prompt(
+                retry_prompt, _ = build_prompt_with_stats(
                     wave,
                     session,
                     validation_error=current_error,

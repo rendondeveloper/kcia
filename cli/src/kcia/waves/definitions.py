@@ -14,6 +14,12 @@ PROMPTS_DIR = "prompts"
 
 
 @dataclass(frozen=True)
+class BudgetConfig:
+    max_prompt_tokens: int
+    drop_order: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class WaveDefinition:
     id: str
     order: int
@@ -35,6 +41,18 @@ def waves_root() -> Path:
 
 def prompts_dir() -> Path:
     return waves_root() / PROMPTS_DIR
+
+
+def load_budget_config() -> BudgetConfig:
+    from kcia.waves.budget import DEFAULT_DROP_ORDER, DEFAULT_MAX_PROMPT_TOKENS
+
+    path = waves_root() / WAVES_FILE
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    raw = data.get("budget") or {}
+    return BudgetConfig(
+        max_prompt_tokens=int(raw.get("max_prompt_tokens", DEFAULT_MAX_PROMPT_TOKENS)),
+        drop_order=tuple(raw.get("drop_order", DEFAULT_DROP_ORDER)),
+    )
 
 
 def load_waves() -> list[WaveDefinition]:

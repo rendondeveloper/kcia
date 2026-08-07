@@ -49,6 +49,16 @@ def load_global_config() -> dict[str, Any]:
     return data
 
 
+def resolve_max_prompt_tokens() -> int:
+    """Precedence: user preference > waves.yaml > default."""
+    from kcia.waves.definitions import load_budget_config
+
+    prefs = load_global_config().get("preferences", {})
+    if "max_prompt_tokens" in prefs:
+        return int(prefs["max_prompt_tokens"])
+    return load_budget_config().max_prompt_tokens
+
+
 def save_global_config(config: dict[str, Any]) -> None:
     GLOBAL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     GLOBAL_CONFIG_FILE.write_text(

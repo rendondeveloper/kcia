@@ -1,4 +1,7 @@
 schema_version: 1
+budget:
+  max_prompt_tokens: 120000
+  drop_order: [architecture, monorepo, data, api, web, accessibility, testing, validation, coding]
 waves:
   - id: understanding
     order: 1
