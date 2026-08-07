@@ -271,60 +271,6 @@ TODO: describe the architecture.
 - Siempre usa llaves en `if`, `for` y `while`, incluso en una línea.
 
 
-# Pruebas
-
-## Estructura
-
-- Organiza tests con patrón AAA: Arrange, Act, Assert.
-- Un concepto por test; nombres que describan el comportamiento esperado.
-- Usa `mocktail` para dobles de prueba; evita mocks manuales frágiles.
-
-## Cobertura
-
-- Toda lógica de negocio nueva requiere tests unitarios.
-- Cambios en repositorios o datasources requieren tests de integración cuando aplique.
-- No reduzcas cobertura existente sin justificación en el plan.
-
-## Datos de prueba
-
-- Factories o builders para fixtures repetidos.
-- Evita dependencias de red o disco en unit tests.
-
-
-# Validación
-
-## Antes del handoff
-
-- Ejecuta `verify` (test + lint) en el root del paquete afectado.
-- Corrige todos los errores de analyzer antes de marcar la tarea completa.
-- Si DCM está disponible en el proyecto, ejecútalo sobre archivos modificados.
-
-## Calidad
-
-- Sin secretos ni credenciales en código o fixtures.
-- Texto visible al usuario debe pasar por i18n (`AppLocalizations` o equivalente).
-
-
-# Arquitectura
-
-## Capas
-
-- Respeta clean architecture: presentation → domain → data.
-- La lógica de negocio vive en domain; data implementa contratos del dominio.
-- Presentation (widgets, blocs, controllers) no accede directamente a APIs externas.
-
-## Features y barrels
-
-- Una carpeta por feature con barrel file (`feature.dart`) que exporta la API pública.
-- Cada capa dentro de la feature expone su barrel (`domain.dart`, `data.dart`).
-- No importes implementaciones internas desde otras features.
-
-## Dependencias
-
-- Domain no depende de Flutter ni de paquetes de infraestructura.
-- Data puede depender de HTTP, DB y serializers; no de widgets.
-
-
 # Monorepo
 
 ## Melos
@@ -337,24 +283,6 @@ TODO: describe the architecture.
 - Mantén APIs estables en paquetes `shared_*` o `core`.
 - Versiona breaking changes con changelog por paquete.
 - Evita dependencias circulares entre paquetes del workspace.
-
-
-# API y handlers
-
-- Handlers delgados: validar entrada, delegar a servicios, mapear respuesta.
-- Sin lógica de negocio en handlers ni en funciones de ruta.
-- DTOs con validación explícita en el borde (query, body, headers).
-- Códigos HTTP consistentes y cuerpos de error estructurados.
-- Logging estructurado con correlation id por request.
-
-
-# Datos y persistencia
-
-- Usa transacciones para operaciones que deben ser atómicas.
-- Migraciones versionadas y reversibles cuando el stack lo permita.
-- Connection pooling configurado según entorno.
-- Aislamiento con `Isolate` para CPU-bound fuera del event loop.
-- Manejo de errores: captura en capa data, traduce a fallos de dominio.
 
 
 ### Rules

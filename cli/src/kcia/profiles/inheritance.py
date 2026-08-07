@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from kcia.profiles.schema import AdapterConfig, ProfileSpec, ValidationConfig
+from kcia.profiles.schema import AdapterConfig, ProfileSpec, ReferenceSpec, ValidationConfig
 
 
 class CircularInheritanceError(ValueError):
@@ -24,6 +24,13 @@ class UnknownParentError(ValueError):
 MAX_INHERITANCE_DEPTH = 3
 
 
+@dataclass(frozen=True)
+class ReferenceEntry:
+    profile_id: str
+    path: Path
+    tags: tuple[str, ...]
+
+
 @dataclass
 class ResolvedProfile:
     id: str
@@ -32,7 +39,7 @@ class ResolvedProfile:
     abstract: bool
     commands: dict[str, str]
     command_overrides: list[dict[str, Any]]
-    references: list[tuple[str, Path]]
+    references: list[ReferenceEntry]
     workflows: dict[str, Path]
     rules: dict[str, Any]
     adapters: dict[str, Any]
@@ -95,7 +102,7 @@ def _build_chain(profile_id: str, registry: ProfileRegistry) -> list[str]:
 def _merge_chain(chain: list[str], registry: ProfileRegistry) -> ResolvedProfile:
     commands: dict[str, str] = {}
     rules: dict[str, Any] = {}
-    references: list[tuple[str, Path]] = []
+    references: list[ReferenceEntry] = []
     workflows: dict[str, Path] = {}
     adapters: dict[str, Any] = {}
     validation: dict[str, Any] = {}
@@ -108,7 +115,13 @@ def _merge_chain(chain: list[str], registry: ProfileRegistry) -> ResolvedProfile
         commands.update(spec.commands)
         rules.update(spec.rules)
         for reference in spec.references:
-            references.append((profile_id, root / reference))
+            references.append(
+                ReferenceEntry(
+                    profile_id=profile_id,
+                    path=root / reference.path,
+                    tags=tuple(reference.tags),
+                )
+            )
         for workflow in spec.workflows:
             workflows[Path(workflow).name] = root / workflow
         adapters = _deep_merge(adapters, spec.adapters.model_dump(exclude_none=True))

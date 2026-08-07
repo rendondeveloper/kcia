@@ -170,8 +170,8 @@ def _validate_profile_assets(spec: ProfileSpec, profile_dir: Path, *, strict: bo
         except PredicateError as exc:
             raise ValueError(f"{profile_dir / PROFILE_FILE}: {exc}") from exc
     for reference in spec.references:
-        if not (profile_dir / reference).is_file():
-            raise FileNotFoundError(f"missing reference '{reference}' in {profile_dir}")
+        if not (profile_dir / reference.path).is_file():
+            raise FileNotFoundError(f"missing reference '{reference.path}' in {profile_dir}")
     for workflow in spec.workflows:
         if not (profile_dir / workflow).is_file():
             raise FileNotFoundError(f"missing workflow '{workflow}' in {profile_dir}")

@@ -26,6 +26,7 @@ class WaveDefinition:
     edit_scope: tuple[str, ...] = ()
     validation: str | None = None
     can_ask_questions: bool = False
+    reference_tags: tuple[str, ...] | None = None
 
 
 def waves_root() -> Path:
@@ -41,6 +42,8 @@ def load_waves() -> list[WaveDefinition]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     waves: list[WaveDefinition] = []
     for raw in data.get("waves", []):
+        raw_tags = raw.get("reference_tags")
+        reference_tags = None if "reference_tags" not in raw else tuple(raw_tags or [])
         waves.append(
             WaveDefinition(
                 id=raw["id"],
@@ -54,6 +57,7 @@ def load_waves() -> list[WaveDefinition]:
                 edit_scope=tuple(raw.get("edit_scope", [])),
                 validation=raw.get("validation"),
                 can_ask_questions=bool(raw.get("can_ask_questions", False)),
+                reference_tags=reference_tags,
             )
         )
     return sorted(waves, key=lambda wave: wave.order)

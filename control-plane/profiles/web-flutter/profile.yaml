@@ -18,7 +18,7 @@ commands:
   lint: "fvm flutter analyze"
   verify: "fvm flutter test && fvm flutter analyze"
 references:
-  - references/web.md
+  - { path: references/web.md, tags: [web, coding] }
 workflows:
   - workflows/feature.md
   - workflows/bugfix.md

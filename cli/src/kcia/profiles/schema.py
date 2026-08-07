@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Leading underscore marks abstract (inheritance-only) profiles per §3.3.
 PROFILE_ID_PATTERN = re.compile(r"^_{0,1}[a-z][a-z0-9-]*$")
@@ -43,6 +44,17 @@ class ValidationConfig(BaseModel):
     retry_limit: int = 3
 
 
+class ReferenceSpec(BaseModel):
+    path: str
+    tags: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def default_tag_from_stem(self) -> ReferenceSpec:
+        if not self.tags:
+            self.tags = [Path(self.path).stem]
+        return self
+
+
 class ProfileSpec(BaseModel):
     schema_version: int
     id: str
@@ -53,11 +65,24 @@ class ProfileSpec(BaseModel):
     detect: list[DetectRule] = Field(default_factory=list)
     commands: dict[str, str] = Field(default_factory=dict)
     command_overrides: list[CommandOverride] = Field(default_factory=list)
-    references: list[str] = Field(default_factory=list)
+    references: list[ReferenceSpec] = Field(default_factory=list)
     workflows: list[str] = Field(default_factory=list)
     rules: dict[str, Any] = Field(default_factory=dict)
     adapters: AdapterConfig = Field(default_factory=AdapterConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
+
+    @field_validator("references", mode="before")
+    @classmethod
+    def normalize_references(cls, value: Any) -> list[Any]:
+        if not value:
+            return []
+        normalized: list[Any] = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append({"path": item})
+            else:
+                normalized.append(item)
+        return normalized
 
     @field_validator("id")
     @classmethod

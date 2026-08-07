@@ -14,10 +14,11 @@ from kcia.profiles.inheritance import (
     CircularInheritanceError,
     LoadedProfile,
     ProfileRegistry,
+    ReferenceEntry,
     resolve_inheritance,
 )
 from kcia.profiles.loader import load_registry
-from kcia.profiles.schema import ProfileSpec
+from kcia.profiles.schema import ProfileSpec, ReferenceSpec
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -184,3 +185,67 @@ def test_circular_inheritance_raises() -> None:
     )
     with pytest.raises(CircularInheritanceError, match="circular inheritance"):
         resolve_inheritance("profile-a", registry)
+
+
+def test_reference_spec_normalizes_string_and_object_forms() -> None:
+    spec = ProfileSpec.model_validate(
+        {
+            "schema_version": 2,
+            "id": "demo",
+            "display_name": "Demo",
+            "references": [
+                "references/coding.md",
+                {"path": "references/api.md", "tags": ["api", "architecture"]},
+            ],
+        }
+    )
+    assert spec.references[0] == ReferenceSpec(path="references/coding.md", tags=["coding"])
+    assert spec.references[1].tags == ["api", "architecture"]
+
+
+def test_resolve_inheritance_propagates_reference_tags() -> None:
+    parent = ProfileSpec.model_validate(
+        {
+            "schema_version": 2,
+            "id": "parent",
+            "display_name": "Parent",
+            "references": [{"path": "references/coding.md", "tags": ["coding"]}],
+        }
+    )
+    child = ProfileSpec.model_validate(
+        {
+            "schema_version": 2,
+            "id": "child",
+            "display_name": "Child",
+            "extends": "parent",
+            "references": [{"path": "references/api.md", "tags": ["api"]}],
+        }
+    )
+    root = Path("/tmp/profiles")
+    registry = ProfileRegistry(
+        profiles={
+            "parent": LoadedProfile(parent, root / "parent", "test", "test"),
+            "child": LoadedProfile(child, root / "child", "test", "test"),
+        },
+        sources={},
+        shadowed=[],
+    )
+    resolved = resolve_inheritance("child", registry)
+    assert resolved.references == [
+        ReferenceEntry("parent", root / "parent" / "references/coding.md", ("coding",)),
+        ReferenceEntry("child", root / "child" / "references/api.md", ("api",)),
+    ]
+
+
+def test_nodepack_string_reference_derives_stem_tag() -> None:
+    previous = os.environ.get("KCIA_PROFILE_PATH")
+    os.environ["KCIA_PROFILE_PATH"] = str(NODEPACK)
+    try:
+        registry = load_registry(None)
+        resolved = resolve_inheritance("react-app", registry)
+        assert resolved.references[0].tags == ("coding",)
+    finally:
+        if previous is None:
+            os.environ.pop("KCIA_PROFILE_PATH", None)
+        else:
+            os.environ["KCIA_PROFILE_PATH"] = previous

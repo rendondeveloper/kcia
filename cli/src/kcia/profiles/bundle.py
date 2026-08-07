@@ -44,9 +44,9 @@ def render_bundle(resolved: ResolvedProfile, roots: list[str]) -> dict[str, str]
     # References are concatenated parent-first, keeping the declaring profile visible
     # so guidance inherited from an ancestor is attributable.
     references = [GENERATED_HEADER, f"# {resolved.display_name} — references\n"]
-    for profile_id, path in resolved.references:
-        references.append(f"\n<!-- from profile: {profile_id} ({path.name}) -->\n")
-        references.append(_read(path))
+    for entry in resolved.references:
+        references.append(f"\n<!-- from profile: {entry.profile_id} ({entry.path.name}) -->\n")
+        references.append(_read(entry.path))
     files["references.md"] = "".join(references)
 
     for name, path in sorted(resolved.workflows.items()):

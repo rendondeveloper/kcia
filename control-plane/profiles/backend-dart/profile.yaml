@@ -36,8 +36,8 @@ command_overrides:
       test: "fvm dart run melos run test:all"
       verify: "fvm dart run melos run verify"
 references:
-  - references/api.md
-  - references/data.md
+  - { path: references/api.md, tags: [api, architecture] }
+  - { path: references/data.md, tags: [data, architecture] }
 workflows:
   - workflows/feature.md
   - workflows/bugfix.md

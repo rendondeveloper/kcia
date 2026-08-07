@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from kcia.paths import control_plane_root
-from kcia.profiles.inheritance import resolve_inheritance
+from kcia.profiles.inheritance import ReferenceEntry, ResolvedProfile, resolve_inheritance
 from kcia.profiles.loader import load_registry
 from kcia.render import render_template
 from kcia.waves.budget import PromptStats, SectionStat, estimate_tokens
@@ -75,9 +75,9 @@ def build_prompt_with_stats(
             continue
         resolved = resolve_inheritance(profile_id, registry)
         profile_parts: list[str] = [f"## Profile bundle: {profile_id}\n"]
-        for _owner, reference in resolved.references:
-            if reference.is_file():
-                profile_parts.append(reference.read_text(encoding="utf-8"))
+        for entry in _references_for_wave(resolved, wave):
+            if entry.path.is_file():
+                profile_parts.append(entry.path.read_text(encoding="utf-8"))
                 profile_parts.append("")
         profile_parts.append("### Rules\n")
         for key, value in resolved.rules.items():
@@ -121,6 +121,18 @@ def build_prompt_with_stats(
 
     prompt = "\n".join(part for part in sections if part)
     return prompt, stats
+
+
+def _references_for_wave(
+    resolved: ResolvedProfile, wave: WaveDefinition
+) -> list[ReferenceEntry]:
+    """Filtra por tags. `wave.reference_tags is None` => todas."""
+    if wave.reference_tags is None:
+        return resolved.references
+    if not wave.reference_tags:
+        return []
+    allowed = set(wave.reference_tags)
+    return [entry for entry in resolved.references if allowed.intersection(entry.tags)]
 
 
 def _guardrails_for_wave(wave_id: str) -> list[str]:

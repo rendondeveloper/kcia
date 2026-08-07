@@ -59,8 +59,8 @@ def profile_show(profile_id: str) -> None:
     for key, value in resolved.rules.items():
         typer.echo(f"  {key}: {value}")
     typer.echo("references:")
-    for owner, path in resolved.references:
-        typer.echo(f"  [{owner}] {path.name}")
+    for entry in resolved.references:
+        typer.echo(f"  [{entry.profile_id}] {entry.path.name}")
 
 
 @app.command("explain")

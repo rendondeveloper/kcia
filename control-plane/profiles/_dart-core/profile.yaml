@@ -11,11 +11,11 @@ commands:
   verify: "fvm dart test && fvm dart analyze"
   codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
 references:
-  - references/coding.md
-  - references/testing.md
-  - references/validation.md
-  - references/architecture.md
-  - references/monorepo.md
+  - { path: references/coding.md, tags: [coding] }
+  - { path: references/testing.md, tags: [testing] }
+  - { path: references/validation.md, tags: [validation] }
+  - { path: references/architecture.md, tags: [architecture] }
+  - { path: references/monorepo.md, tags: [monorepo] }
 workflows:
   - workflows/feature.md
   - workflows/bugfix.md
