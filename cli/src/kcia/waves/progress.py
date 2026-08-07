@@ -11,7 +11,8 @@ import itertools
 import shutil
 import sys
 import threading
-from typing import TextIO
+import time
+from typing import Callable, TextIO
 
 from kcia.providers.events import (
     FileRead,
@@ -21,7 +22,7 @@ from kcia.providers.events import (
     ToolCallStart,
     UsageUpdate,
 )
-from kcia.usage import format_tokens
+from kcia.usage import format_duration, format_tokens
 
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _TICK = 0.1
@@ -43,6 +44,7 @@ class WaveProgress:
         *,
         stream: TextIO | None = None,
         enabled: bool | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._stream = stream if stream is not None else sys.stderr
         self._tty = enabled if enabled is not None else self._stream.isatty()
@@ -57,6 +59,8 @@ class WaveProgress:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._width = 0
+        self._started_at: float | None = None
+        self._clock = clock or time.monotonic
 
     def __enter__(self) -> WaveProgress:
         self.start()
@@ -66,6 +70,7 @@ class WaveProgress:
         self.finish(failed=exc[0] is not None)
 
     def start(self) -> None:
+        self._started_at = self._clock()
         if not self._tty:
             self._write_line(f"{self._header} — running")
             return
@@ -95,14 +100,22 @@ class WaveProgress:
             self._thread = None
         self._clear()
 
+        elapsed = self.elapsed
         with self._lock:
-            details = [_plural(self._tool_calls, "tool call")]
+            details = [format_duration(elapsed), _plural(self._tool_calls, "tool call")]
             if self._files_written:
                 details.append(_plural(len(self._files_written), "file") + " written")
             if self._tokens:
                 details.append(f"{format_tokens(self._tokens)} tokens")
         verb = "failed" if failed else "completed"
         self._write_line(f"{self._header} — {verb} ({', '.join(details)})")
+
+    @property
+    def elapsed(self) -> float:
+        """Seconds since start(); 0 before the wave begins."""
+        if self._started_at is None:
+            return 0.0
+        return self._clock() - self._started_at
 
     @property
     def activity(self) -> str:
@@ -116,11 +129,12 @@ class WaveProgress:
             self._stop.wait(_TICK)
 
     def _animate_once(self) -> None:
+        elapsed = self.elapsed
         with self._lock:
             activity = self._activity
             tokens = self._tokens
             calls = self._tool_calls
-        suffix = f"{calls} tools"
+        suffix = f"{format_duration(elapsed)} · {calls} tools"
         if tokens:
             suffix += f" · {format_tokens(tokens)} tok"
         self._render(f"{next(self._spinner)} {self._header} — {activity} · {suffix}")

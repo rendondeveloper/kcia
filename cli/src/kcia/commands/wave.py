@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import signal
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +11,7 @@ import typer
 
 from kcia.config import resolve_agents
 from kcia.paths import find_repo_root
-from kcia.usage import format_tokens
+from kcia.usage import format_duration, format_tokens
 from kcia.waves.definitions import get_wave, load_waves
 from kcia.waves.progress import WaveProgress
 from kcia.waves.runner import next_pending_wave, run_wave, run_waves_until
@@ -116,6 +117,7 @@ def wave_run(
         raise typer.Exit(code=1)
 
     reporter = _ProgressReporter(enabled=not quiet)
+    run_started = time.monotonic()
 
     if wave_id:
         if _cancel_requested:
@@ -149,7 +151,7 @@ def wave_run(
 
         pending = next_pending_wave(session)
         if pending is None:
-            typer.echo("All waves completed.")
+            typer.echo(f"All waves completed in {format_duration(time.monotonic() - run_started)}.")
             return
 
         result = run_wave(

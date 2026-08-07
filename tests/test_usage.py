@@ -62,3 +62,43 @@ def test_collect_usage_sums_session_waves() -> None:
     assert totals.provider_calls == 2
     assert totals.per_wave == {"understanding": 18_000, "analysis": 22_000}
     assert "implementation" not in totals.per_wave
+
+
+def test_format_duration_scales_with_magnitude() -> None:
+    from kcia.usage import format_duration
+
+    assert format_duration(8.4) == "8s"
+    assert format_duration(59) == "59s"
+    assert format_duration(94) == "1m34s"
+    assert format_duration(3720) == "1h02m"
+
+
+def test_collect_usage_derives_per_wave_duration() -> None:
+    from kcia.usage import collect_usage
+
+    usage = collect_usage(
+        {
+            "understanding": {
+                "tokens": 2900,
+                "started_at": "2026-08-07T14:18:00+00:00",
+                "finished_at": "2026-08-07T14:18:44+00:00",
+            },
+            # cursor reports no tokens; the wave must still be listed and timed.
+            "implementation": {
+                "started_at": "2026-08-07T14:20:00+00:00",
+                "finished_at": "2026-08-07T14:30:12+00:00",
+            },
+        }
+    )
+    assert usage.per_wave_seconds["understanding"] == 44.0
+    assert usage.per_wave_seconds["implementation"] == 612.0
+    assert usage.total_seconds == 656.0
+    assert "implementation" in usage.per_wave
+
+
+def test_collect_usage_tolerates_unfinished_waves() -> None:
+    from kcia.usage import collect_usage
+
+    usage = collect_usage({"understanding": {"started_at": "2026-08-07T14:18:00+00:00"}})
+    assert usage.per_wave_seconds == {}
+    assert usage.total_seconds == 0

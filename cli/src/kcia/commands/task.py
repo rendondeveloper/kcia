@@ -8,7 +8,7 @@ from typing import Optional
 import typer
 
 from kcia.paths import find_repo_root
-from kcia.usage import collect_usage, format_tokens
+from kcia.usage import collect_usage, format_duration, format_tokens
 from kcia.waves.session import Session, classify_input, load_manifest_raw
 
 app = typer.Typer(help="Manage tasks and work items.", no_args_is_help=True)
@@ -92,9 +92,13 @@ def task_show(
             typer.echo(f"  cached: {format_tokens(usage.cached_tokens)} (read from cache)")
         typer.echo(f"tool calls: {usage.tool_calls}")
         typer.echo(f"provider calls: {usage.provider_calls}")
+        if usage.total_seconds:
+            typer.echo(f"elapsed: {format_duration(usage.total_seconds)}")
         typer.echo("")
         for wave_id, tokens in usage.per_wave.items():
-            typer.echo(f"  {wave_id}\t{format_tokens(tokens)}")
+            elapsed = usage.per_wave_seconds.get(wave_id)
+            duration = format_duration(elapsed) if elapsed is not None else "-"
+            typer.echo(f"  {wave_id:<22}{format_tokens(tokens):>8}  {duration:>8}")
 
 
 @app.command("inject")

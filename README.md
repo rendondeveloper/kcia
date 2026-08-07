@@ -270,9 +270,12 @@ While a wave runs, a live status line reports which agent is working, on which p
 model, and what it is doing right now:
 
 ```
-⠹ implementation · builder · cursor/claude-sonnet-5 — writing lib/device_list.dart · 7 tools · 12k tok
-implementation · builder · cursor/claude-sonnet-5 — completed (7 tool calls, 2 files written, 13k tokens)
+⠹ implementation · builder · cursor/claude-sonnet-5 — writing lib/device_list.dart · 2m14s · 7 tools · 12k tok
+implementation · builder · cursor/claude-sonnet-5 — completed (10m12s, 7 tool calls, 2 files written, 13k tokens)
 ```
+
+`kcia wave run` closes with the total (`All waves completed in 14m35s.`), and `kcia task show`
+breaks the time down per wave alongside the tokens.
 
 It is drawn on stderr and refreshed in place, so piping or redirecting stdout is unaffected.
 Off a TTY it degrades to one plain line per wave, and `--quiet` turns it off entirely.

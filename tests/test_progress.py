@@ -152,3 +152,28 @@ def test_run_wave_still_accepts_runners_without_on_event(git_repo) -> None:
         on_event=lambda event: None,
     )
     assert result.status == "completed"
+
+
+def test_summary_leads_with_elapsed_time() -> None:
+    clock = {"now": 0.0}
+    buf = io.StringIO()
+    progress = WaveProgress(
+        "implementation",
+        "builder",
+        "cursor",
+        "claude-sonnet-5",
+        stream=buf,
+        enabled=False,
+        clock=lambda: clock["now"],
+    )
+    progress.start()
+    clock["now"] = 612.0
+    progress.finish()
+
+    summary = buf.getvalue().strip().splitlines()[-1]
+    assert "completed (10m12s," in summary
+
+
+def test_elapsed_is_zero_before_the_wave_starts() -> None:
+    progress = _progress(io.StringIO(), enabled=False)
+    assert progress.elapsed == 0.0
