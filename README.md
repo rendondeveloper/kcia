@@ -259,11 +259,23 @@ kcia wave list
 kcia wave run
 kcia wave run understanding
 kcia wave run --until analysis
+kcia wave run --quiet            # no live progress line (CI, logs)
 
 # 5. Inspect progress and token usage.
 kcia task show
 kcia wave logs understanding
 ```
+
+While a wave runs, a live status line reports which agent is working, on which provider and
+model, and what it is doing right now:
+
+```
+⠹ implementation · builder · cursor/claude-sonnet-5 — writing lib/device_list.dart · 7 tools · 12k tok
+implementation · builder · cursor/claude-sonnet-5 — completed (7 tool calls, 2 files written, 13k tokens)
+```
+
+It is drawn on stderr and refreshed in place, so piping or redirecting stdout is unaffected.
+Off a TTY it degrades to one plain line per wave, and `--quiet` turns it off entirely.
 
 `kcia init` writes `.ai/manifest.yaml`, composed profile bundles, provider adapters
 (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/*.mdc`), and adds all generated paths to

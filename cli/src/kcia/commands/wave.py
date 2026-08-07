@@ -12,6 +12,7 @@ from kcia.config import resolve_agents
 from kcia.paths import find_repo_root
 from kcia.usage import format_tokens
 from kcia.waves.definitions import get_wave, load_waves
+from kcia.waves.progress import WaveProgress
 from kcia.waves.runner import next_pending_wave, run_wave, run_waves_until
 from kcia.waves.session import Session, runs_dir
 
@@ -57,11 +58,41 @@ def wave_list() -> None:
         typer.echo(f"\ntotal: {format_tokens(total)} tokens")
 
 
+class _ProgressReporter:
+    """Owns the live status line for the wave currently running."""
+
+    def __init__(self, *, enabled: bool) -> None:
+        self._enabled = enabled
+        self._current: WaveProgress | None = None
+
+    def start(self, wave, agent) -> None:  # noqa: ANN001 - callback signature
+        self.finish()
+        if not self._enabled:
+            typer.echo(f"Wave `{wave.id}` running ({agent.provider}/{agent.model}).")
+            return
+        self._current = WaveProgress(
+            wave.id, wave.agent, agent.provider, agent.model
+        )
+        self._current.start()
+
+    def handle(self, event) -> None:  # noqa: ANN001 - callback signature
+        if self._current is not None:
+            self._current.handle(event)
+
+    def finish(self, *, failed: bool = False) -> None:
+        if self._current is not None:
+            self._current.finish(failed=failed)
+            self._current = None
+
+
 @app.command("run")
 def wave_run(
     wave_id: Optional[str] = typer.Argument(None, help="Wave id; default is next pending."),
     until: Optional[str] = typer.Option(None, "--until", help="Run waves until this id."),
     force: bool = typer.Option(False, "--force", help="Ignore unmet prerequisites."),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Suppress the live progress line."
+    ),
 ) -> None:
     global _cancel_requested
     _cancel_requested = False
@@ -84,13 +115,21 @@ def wave_run(
         )
         raise typer.Exit(code=1)
 
+    reporter = _ProgressReporter(enabled=not quiet)
+
     if wave_id:
         if _cancel_requested:
             typer.echo("Cancelled.")
             raise typer.Exit(code=130)
-        result = run_wave(wave_id, session, force=force)
+        result = run_wave(
+            wave_id,
+            session,
+            force=force,
+            on_event=reporter.handle,
+            on_wave_start=reporter.start,
+        )
+        reporter.finish(failed=result.status != "completed")
         if result.status == "completed":
-            typer.echo(f"Wave `{wave_id}` completed.")
             if result.output_path:
                 typer.echo(f"Wrote {result.output_path}")
         else:
@@ -113,11 +152,17 @@ def wave_run(
             typer.echo("All waves completed.")
             return
 
-        result = run_wave(pending.id, session, force=force)
+        result = run_wave(
+            pending.id,
+            session,
+            force=force,
+            on_event=reporter.handle,
+            on_wave_start=reporter.start,
+        )
+        reporter.finish(failed=result.status != "completed")
         if result.status != "completed":
             typer.echo(f"Wave `{pending.id}` failed: {result.error}")
             raise typer.Exit(code=1)
-        typer.echo(f"Wave `{pending.id}` completed.")
         if target and pending.id == target:
             return
 
