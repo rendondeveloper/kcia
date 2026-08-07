@@ -3,42 +3,6 @@
 **Control plane + CLI** that drives your existing agent tools (Claude Code, Cursor) through a
 structured, auditable pipeline — without calling any LLM API directly.
 
-## Objective
-
-kcia exists to give coding agents **the right guidance at the right moment**, while keeping
-prompts as small as possible.
-
-The guiding principle:
-
-> **Python resolves what has a single verifiable answer** — which files exist, which profile
-> owns a path, which command runs where, whether a test passed.
-> **The model decides what depends on the concrete problem** — what is relevant, how to
-> design the solution.
-
-Concretely, kcia:
-
-1. **Detects** the technologies in your repository and maps them to **profiles** (YAML +
-   Markdown packs — no Python per technology).
-2. **Composes** a prompt per pipeline step (**wave**) from guardrails, profile references,
-   project context, and task state — filtering and budgeting what goes in so the model is
-   not flooded with guidance it does not need yet.
-3. **Runs** the provider CLI you already pay for (`claude`, `cursor-agent`) as a subprocess,
-   with real permission restrictions and per-profile validation after implementation.
-4. **Persists** everything on disk — prompts, outputs, token counts — so every step is
-   inspectable and the planner → builder handoff is a file, not a conversation thread.
-
-You install kcia **once** on your machine. Each project only gets a `.ai/` directory
-(gitignored) when you run `kcia init`.
-
-## Concepts
-
-| Concept | What it is |
-|---|---|
-| **Profile** | A technology pack: detection rules, shell commands, coding references, boolean rules. |
-| **Agent** | One of two roles — `planner` or `builder` — each mapped to a `(provider, model)` pair. |
-| **Wave** | One of five sequential pipeline steps, from understanding through documentation. |
-| **Task** | A unit of work started with `kcia task init`, tracked in `.ai/local/session.json`. |
-
 ## Requirements
 
 - Python 3.11+
@@ -127,126 +91,13 @@ Note that `.ai/local/` is gitignored, so a repo-scoped choice is **yours on this
 — it does not travel with the repository. There is currently no committed, team-wide way to
 pin models for a project; each person runs the `--scope repo` command in their own clone.
 
-### Why not `pipx install`
-
-`pipx install ./cli` and
-`pipx install "git+https://github.com/rendondeveloper/kcia.git#subdirectory=cli"` both
-install the CLI but produce a **broken runtime**. `control-plane/` lives outside `cli/`, so
-no Python build backend can bundle it into the wheel; `control_plane_root()` then resolves
-to a path that does not exist and every command that needs profiles, waves, roles,
-guardrails, or the provider catalog comes up empty.
-
-Packaged installs will be supported once `kcia sync` lands (see [Status](#status)).
-
-## Updating
-
-New versions land on `master`. Update **in your clone** (`~/tools/kcia`), never inside the
-projects you work on.
-
-### Routine update
-
-Same one line as the install:
-
-```bash
-~/tools/kcia/scripts/install.sh update
-```
-
-Or, if the clone is gone or broken, from the network again:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/rendondeveloper/kcia/master/scripts/install.sh | bash -s update
-```
-
-The updater does a `git reset --hard origin/master` in the clone. That is intentional: the
-clone is a distribution copy, not a place to edit — local changes there are discarded. Your
-own projects are untouched.
-
-### After updating — refresh your projects
-
-Read `CHANGELOG.md` first. Two versions move independently:
-
-| Version | Command | What it tracks |
-|---|---|---|
-| CLI | `kcia --version` | Python code, commands, runner |
-| Control plane | `cat control-plane/VERSION` | Profiles, waves, guardrails, templates |
-
-If the control plane version changed, regenerate guidance in each project:
-
-```bash
-cd /path/to/your/project
-kcia init --yes          # idempotent — rewrites only what changed
-```
-
-Or, if you only need to refresh detection:
-
-```bash
-kcia profile detect
-```
-
-### Full reset (if something still looks wrong)
-
-Rebuild the kcia environment from scratch:
-
-```bash
-rm -rf ~/tools/kcia/.venv
-~/tools/kcia/scripts/install.sh update
-```
-
-The installer rebuilds the virtualenv when it is missing.
-
-In a project where generated output looks stale:
-
-```bash
-cd /path/to/your/project
-rm -rf .ai/generated .ai/cache
-kcia init --yes
-```
-
-Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours.
-
-### Uninstall
-
-```bash
-~/tools/kcia/scripts/install.sh uninstall
-```
-
-That removes the clone and its venv, the `kcia` shim, `~/.config/kcia` (agent preferences),
-`~/.local/share/kcia` (installed profile packs), and the `PATH` line it added. The `.ai/`
-directories in your projects are left alone.
-
-Publishing a new version (maintainers only): [RELEASING.md](RELEASING.md).
-
-## Where kcia lives
-
-| | Location | Committed? |
-|---|---|---|
-| The CLI and control plane | your clone, e.g. `~/tools/kcia` | separate repo |
-| Agent preferences (provider, model, effort) | `~/.config/kcia/config.yaml` | no — global to you |
-| Installed profile packs | `~/.local/share/kcia/packs/` | no |
-| Per-repo state | `<your project>/.ai/` | partly — see below |
-
-Inside a project you work on, **nothing kcia writes is committed**. `kcia init` adds it
-all to that project's `.gitignore` for you:
-
-```gitignore
-# kcia — generated, do not commit
-.ai/
-CLAUDE.md
-AGENTS.md
-.cursor/rules/
-```
-
-So a teammate cloning your project sees no kcia files at all; they run `kcia init` once
-and get their own. Nothing to configure, nothing to keep in sync by hand.
-
-This includes `.ai/profiles/`. Profiles you write there are local to your working copy
-and do not travel with the project — to share a profile with your team, publish it as a
-profile pack and install it with `kcia profile add`.
-
-Nothing from kcia's own dependency tree is installed into your project, and your project
-needs no Python.
-
 ## Quickstart — first task in a project
+
+> **Set your agents first.** Steps 1 and 2 are in that order on purpose: the agents are what
+> actually run every wave, and they are *not* part of `kcia init`. Skip step 1 and the
+> pipeline silently falls back to catalog defaults — you can burn a full run on a model you
+> never chose. `kcia init` closes by printing the agents it will use, so check that line
+> before starting a task. Already installed? `kcia agent show` tells you where you stand.
 
 Run these from **inside the repository** you want kcia to work on:
 
@@ -350,6 +201,161 @@ Agent configuration (`kcia agent set`) is done once on your machine — see
 [Configure agents](#configure-agents-once). Use `--scope repo` to override per repository
 (written to `.ai/local/agents.yaml`, gitignored) — see
 [Per-project models](#per-project-models).
+
+## Updating
+
+New versions land on `master`. Update **in your clone** (`~/tools/kcia`), never inside the
+projects you work on.
+
+### Routine update
+
+Same one line as the install:
+
+```bash
+~/tools/kcia/scripts/install.sh update
+```
+
+Or, if the clone is gone or broken, from the network again:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rendondeveloper/kcia/master/scripts/install.sh | bash -s update
+```
+
+The updater does a `git reset --hard origin/master` in the clone. That is intentional: the
+clone is a distribution copy, not a place to edit — local changes there are discarded. Your
+own projects are untouched.
+
+### After updating — refresh your projects
+
+Read `CHANGELOG.md` first. Two versions move independently:
+
+| Version | Command | What it tracks |
+|---|---|---|
+| CLI | `kcia --version` | Python code, commands, runner |
+| Control plane | `cat control-plane/VERSION` | Profiles, waves, guardrails, templates |
+
+If the control plane version changed, regenerate guidance in each project:
+
+```bash
+cd /path/to/your/project
+kcia init --yes          # idempotent — rewrites only what changed
+```
+
+Or, if you only need to refresh detection:
+
+```bash
+kcia profile detect
+```
+
+### Full reset (if something still looks wrong)
+
+Rebuild the kcia environment from scratch:
+
+```bash
+rm -rf ~/tools/kcia/.venv
+~/tools/kcia/scripts/install.sh update
+```
+
+The installer rebuilds the virtualenv when it is missing.
+
+In a project where generated output looks stale:
+
+```bash
+cd /path/to/your/project
+rm -rf .ai/generated .ai/cache
+kcia init --yes
+```
+
+Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours.
+
+## Uninstall
+
+```bash
+~/tools/kcia/scripts/install.sh uninstall
+```
+
+That removes the clone and its venv, the `kcia` shim, `~/.config/kcia` (agent preferences),
+`~/.local/share/kcia` (installed profile packs), and the `PATH` line it added. The `.ai/`
+directories in your projects are left alone.
+
+Publishing a new version (maintainers only): [RELEASING.md](RELEASING.md).
+
+## Why not `pipx install`
+
+`pipx install ./cli` and
+`pipx install "git+https://github.com/rendondeveloper/kcia.git#subdirectory=cli"` both
+install the CLI but produce a **broken runtime**. `control-plane/` lives outside `cli/`, so
+no Python build backend can bundle it into the wheel; `control_plane_root()` then resolves
+to a path that does not exist and every command that needs profiles, waves, roles,
+guardrails, or the provider catalog comes up empty.
+
+Packaged installs will be supported once `kcia sync` lands (see [Status](#status)).
+
+## Objective
+
+kcia exists to give coding agents **the right guidance at the right moment**, while keeping
+prompts as small as possible.
+
+The guiding principle:
+
+> **Python resolves what has a single verifiable answer** — which files exist, which profile
+> owns a path, which command runs where, whether a test passed.
+> **The model decides what depends on the concrete problem** — what is relevant, how to
+> design the solution.
+
+Concretely, kcia:
+
+1. **Detects** the technologies in your repository and maps them to **profiles** (YAML +
+   Markdown packs — no Python per technology).
+2. **Composes** a prompt per pipeline step (**wave**) from guardrails, profile references,
+   project context, and task state — filtering and budgeting what goes in so the model is
+   not flooded with guidance it does not need yet.
+3. **Runs** the provider CLI you already pay for (`claude`, `cursor-agent`) as a subprocess,
+   with real permission restrictions and per-profile validation after implementation.
+4. **Persists** everything on disk — prompts, outputs, token counts — so every step is
+   inspectable and the planner → builder handoff is a file, not a conversation thread.
+
+You install kcia **once** on your machine. Each project only gets a `.ai/` directory
+(gitignored) when you run `kcia init`.
+
+## Concepts
+
+| Concept | What it is |
+|---|---|
+| **Profile** | A technology pack: detection rules, shell commands, coding references, boolean rules. |
+| **Agent** | One of two roles — `planner` or `builder` — each mapped to a `(provider, model)` pair. |
+| **Wave** | One of five sequential pipeline steps, from understanding through documentation. |
+| **Task** | A unit of work started with `kcia task init`, tracked in `.ai/local/session.json`. |
+
+## Where kcia lives
+
+| | Location | Committed? |
+|---|---|---|
+| The CLI and control plane | your clone, e.g. `~/tools/kcia` | separate repo |
+| Agent preferences (provider, model, effort) | `~/.config/kcia/config.yaml` | no — global to you |
+| Installed profile packs | `~/.local/share/kcia/packs/` | no |
+| Per-repo state | `<your project>/.ai/` | partly — see below |
+
+Inside a project you work on, **nothing kcia writes is committed**. `kcia init` adds it
+all to that project's `.gitignore` for you:
+
+```gitignore
+# kcia — generated, do not commit
+.ai/
+CLAUDE.md
+AGENTS.md
+.cursor/rules/
+```
+
+So a teammate cloning your project sees no kcia files at all; they run `kcia init` once
+and get their own. Nothing to configure, nothing to keep in sync by hand.
+
+This includes `.ai/profiles/`. Profiles you write there are local to your working copy
+and do not travel with the project — to share a profile with your team, publish it as a
+profile pack and install it with `kcia profile add`.
+
+Nothing from kcia's own dependency tree is installed into your project, and your project
+needs no Python.
 
 ## How it works
 
