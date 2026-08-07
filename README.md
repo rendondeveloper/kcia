@@ -287,16 +287,26 @@ kcia wave logs understanding
 ### The approval gate
 
 The three planning waves run unattended, but `kcia wave run` **stops before
-`implementation`** — the first wave allowed to touch code outside `.ai/`. It prints the plan
-and waits:
+`implementation`** — the first wave allowed to touch code outside `.ai/`. It points at the
+plan and waits:
 
 ```
 Paused before `implementation` — the first wave that can change your code.
-Review the plan above, then:
+
+  Plan: /path/to/your/project/.ai/context/plan.md  (58 lines)
+
+Open it and edit it directly if something is wrong — your changes go
+into the builder's prompt. Then:
+  kcia wave plan               print it here
   kcia wave approve            approve and continue
   kcia task inject "..."       add context, then re-run the planning wave
   kcia task abort              stop here
 ```
+
+The plan is plain Markdown at `.ai/context/plan.md`. **Editing it during the pause works**:
+prompts are composed when a wave runs, not when the plan was written, so whatever the file
+says at `kcia wave approve` time is what the builder gets. That makes correcting a plan
+cheaper than re-running the planning waves.
 
 `kcia wave approve` records the decision **and continues the run** — one command, not two.
 Use `--no-run` to only record it, `--note` to attach a reason, and `kcia wave plan` to

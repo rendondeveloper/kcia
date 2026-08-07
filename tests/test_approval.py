@@ -95,3 +95,28 @@ def test_approval_document_is_none_when_no_plan_was_written(git_repo: Path) -> N
     Session.create(git_repo, text="add a loader", mode="prompt")
     session = Session.load(git_repo)
     assert approval_document(session, get_wave("implementation")) is None
+
+
+def test_edits_to_the_plan_reach_the_builder_prompt(planned: Session) -> None:
+    """The point of showing a path instead of a dump: editing it must matter.
+
+    The prompt is composed when the wave runs, not when the plan was written,
+    so a hand edit made during the pause is what the builder receives.
+    """
+    captured: dict[str, str] = {}
+
+    def capture(adapter, req, **_kwargs):
+        captured["prompt"] = req.prompt
+        return RunResult(output_text="done", exit_code=0)
+
+    plan = context_dir(planned.repo_root) / "plan.md"
+    plan.write_text("# Plan\n\n1. Edited by hand\n", encoding="utf-8")
+    planned.approve("implementation")
+
+    try:
+        run_wave("implementation", planned, force=True, provider_runner=capture)
+    except RuntimeError:
+        # Validation needs a real toolchain; the prompt was already composed.
+        pass
+
+    assert "Edited by hand" in captured["prompt"]

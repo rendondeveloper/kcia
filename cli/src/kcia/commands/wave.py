@@ -70,20 +70,25 @@ def wave_list() -> None:
 def _render_approval_gate(gate: ApprovalRequired) -> None:
     """Show the plan and tell the user how to proceed."""
     typer.echo("")
+    typer.echo(
+        f"Paused before `{gate.wave.id}` — the first wave that can change your code."
+    )
     if gate.document is not None:
-        typer.echo(gate.document.read_text(encoding="utf-8").rstrip())
+        lines = gate.document.read_text(encoding="utf-8").count("\n") + 1
         typer.echo("")
-        typer.echo(f"(from {gate.document})")
+        typer.echo(f"  Plan: {gate.document}  ({lines} lines)")
+        typer.echo("")
+        # The prompt is composed when the wave runs, so edits made now are picked up.
+        typer.echo("Open it and edit it directly if something is wrong — your changes go")
+        typer.echo("into the builder's prompt. Then:")
     else:
+        typer.echo("")
         typer.echo(
             f"warning: no `{gate.wave.approval_shows}` was produced, "
             "so there is no plan to review."
         )
-    typer.echo("")
-    typer.echo(
-        f"Paused before `{gate.wave.id}` — the first wave that can change your code."
-    )
-    typer.echo("Review the plan above, then:")
+        typer.echo("")
+    typer.echo("  kcia wave plan               print it here")
     typer.echo("  kcia wave approve            approve and continue")
     typer.echo("  kcia task inject \"...\"       add context, then re-run the planning wave")
     typer.echo("  kcia task abort              stop here")
