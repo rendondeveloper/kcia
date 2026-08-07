@@ -12,7 +12,10 @@ from kcia.waves.prompts import build_prompt, build_prompt_with_stats
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_FIXTURE = ROOT / "tests" / "fixtures" / "prompts" / "understanding-baseline.md"
 PHASE0_UNDERSTANDING_TOKENS = 2955
-PHASE1_UNDERSTANDING_TOKENS = 2482
+# Subió de 2482 a 2491 al añadir la sección `task-statement`: el enunciado de la tarea
+# nunca llegaba al prompt, así que este alza no es una regresión de contexto sino
+# contenido obligatorio que faltaba. El presupuesto solo puede bajar desde aquí.
+PHASE1_UNDERSTANDING_TOKENS = 2491
 
 
 def test_baseline_prompt_size(melos_session) -> None:
@@ -39,8 +42,8 @@ def test_build_prompt_matches_frozen_baseline(melos_session) -> None:
 def test_build_prompt_with_stats_section_names(melos_session) -> None:
     _, stats = build_prompt_with_stats(get_wave("understanding"), melos_session)
     names = [section.name for section in stats.sections]
-    assert names[:3] == ["role", "guardrails", "project-context"]
-    assert names[3] == "repo-map"
+    assert names[:4] == ["role", "guardrails", "task-statement", "project-context"]
+    assert names[4] == "repo-map"
     assert any(name.startswith("profile:") for name in names)
     assert names[-2:] == ["wave-instruction", "output-format"]
 
@@ -86,3 +89,38 @@ def test_wave_with_empty_reference_tags_injects_none(melos_session) -> None:
     prompt, _ = build_prompt_with_stats(wave, melos_session)
     assert "Respeta clean architecture" not in prompt
 
+
+
+def test_prompt_mode_statement_reaches_every_wave(melos_session) -> None:
+    """El enunciado vive en session.json; en modo prompt nadie escribe
+    .ai/context/task.md, así que cada wave corría sin problema que resolver."""
+    for wave in load_waves():
+        prompt = build_prompt(wave, melos_session)
+        assert "arregla el overflow" in prompt, f"missing statement in wave {wave.id}"
+
+
+def test_ticket_mode_statement_does_not_repeat_the_key(melos_session) -> None:
+    from kcia.waves.session import Session
+
+    session = Session.create(
+        melos_session.repo_root,
+        text="PROJ-42",
+        mode="ticket",
+        ticket_key="PROJ-42",
+    )
+    prompt = build_prompt(get_wave("understanding"), session)
+    assert "Ticket: `PROJ-42`" in prompt
+    assert prompt.count("PROJ-42") == 1
+
+
+def test_scope_is_stated_in_the_prompt(melos_session) -> None:
+    from kcia.waves.session import Session
+
+    session = Session.create(
+        melos_session.repo_root,
+        text="arregla el overflow",
+        mode="prompt",
+        scope=["packages/app"],
+    )
+    prompt = build_prompt(get_wave("understanding"), session)
+    assert "Scope is limited to: packages/app" in prompt

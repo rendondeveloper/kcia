@@ -66,6 +66,11 @@ def build_prompt_with_stats(
     guardrails = "\n".join(_guardrails_for_wave(wave.id))
     add_section("guardrails", guardrails)
 
+    # The request itself lives in the session, not on disk: in prompt mode nothing ever
+    # writes .ai/context/task.md, so relying on that file alone runs every wave with no
+    # problem statement at all.
+    add_section("task-statement", _task_statement(session))
+
     project_context = _read_context_file(repo_root, "project.md")
     add_section("project-context", project_context)
 
@@ -223,6 +228,27 @@ def _guardrails_for_wave(wave_id: str) -> list[str]:
             chunks.append(path.read_text(encoding="utf-8"))
             chunks.append("")
     return chunks
+
+
+def _task_statement(session: Session) -> str:
+    task = session.task
+    statement = (task.get("prompt") or task.get("title") or "").strip()
+    ticket_key = (task.get("ticket_key") or "").strip()
+    if not statement and not ticket_key:
+        return ""
+
+    parts = ["## Task statement\n"]
+    if ticket_key:
+        parts.append(f"Ticket: `{ticket_key}`\n")
+        # In ticket mode the title is just the key; the body comes from ticket.md.
+        if statement == ticket_key:
+            statement = ""
+    if statement:
+        parts.append(f"{statement}\n")
+    scope = task.get("scope") or []
+    if scope:
+        parts.append(f"Scope is limited to: {', '.join(scope)}\n")
+    return "\n".join(parts)
 
 
 def _read_context_file(repo_root: Path, name: str) -> str:
