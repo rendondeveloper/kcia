@@ -15,13 +15,35 @@ detect:
     confidence: high
     evidence: "pubspec.yaml con SDK de Flutter y directorios android/ o ios/"
 commands:
-  install: "fvm flutter pub get"
-  test: "fvm flutter test"
-  lint: "fvm flutter analyze"
-  verify: "fvm flutter test && fvm flutter analyze"
-  codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
+  install: "flutter pub get"
+  test: "flutter test"
+  lint: "flutter analyze"
+  verify: "flutter test && flutter analyze"
+  codegen: "dart run build_runner build --delete-conflicting-outputs"
 command_overrides:
+  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
+  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  - when:
+      any:
+        - file_exists: ".fvmrc"
+        - file_exists: ".fvm/fvm_config.json"
+    commands:
+      install: "fvm flutter pub get"
+      test: "fvm flutter test"
+      lint: "fvm flutter analyze"
+      verify: "fvm flutter test && fvm flutter analyze"
+      codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
+  # Más específico al final: el último override que casa es el que gana.
   - when: { file_exists: "melos.yaml" }
+    commands:
+      test: "dart run melos run test:all"
+      verify: "dart run melos run verify"
+  - when:
+      all:
+        - file_exists: "melos.yaml"
+        - any:
+            - file_exists: ".fvmrc"
+            - file_exists: ".fvm/fvm_config.json"
     commands:
       test: "fvm dart run melos run test:all"
       verify: "fvm dart run melos run verify"

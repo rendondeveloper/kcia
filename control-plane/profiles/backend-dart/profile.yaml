@@ -24,13 +24,26 @@ detect:
     confidence: medium
     evidence: "Punto de entrada bin/ o dependencias de servidor"
 commands:
-  install: "fvm dart pub get"
-  test: "fvm dart test"
-  lint: "fvm dart analyze"
-  verify: "fvm dart test && fvm dart analyze"
-  build: "fvm dart compile exe bin/server.dart"
-  codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
+  install: "dart pub get"
+  test: "dart test"
+  lint: "dart analyze"
+  verify: "dart test && dart analyze"
+  build: "dart compile exe bin/server.dart"
+  codegen: "dart run build_runner build --delete-conflicting-outputs"
 command_overrides:
+  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
+  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  - when:
+      any:
+        - file_exists: ".fvmrc"
+        - file_exists: ".fvm/fvm_config.json"
+    commands:
+      install: "fvm dart pub get"
+      test: "fvm dart test"
+      lint: "fvm dart analyze"
+      verify: "fvm dart test && fvm dart analyze"
+      build: "fvm dart compile exe bin/server.dart"
+      codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
   - when: { file_exists: "melos.yaml" }
     commands:
       test: "fvm dart run melos run test:all"

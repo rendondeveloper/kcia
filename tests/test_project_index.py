@@ -133,3 +133,24 @@ def test_init_writes_facts_and_preserves_later_edits(tmp_path: Path) -> None:
         capture_output=True,
     )
     assert "Hand written." not in project.read_text(encoding="utf-8")
+
+
+def test_reports_fvm_pin_when_the_repository_declares_one(flutter_repo: Path) -> None:
+    (flutter_repo / ".fvmrc").write_text('{"flutter": "3.35.7"}', encoding="utf-8")
+    facts = build_project_facts(flutter_repo, name="app", layout="single")
+    assert "Toolchain: fvm (Flutter 3.35.7)." in facts
+
+
+def test_reports_the_legacy_fvm_config(flutter_repo: Path) -> None:
+    (flutter_repo / ".fvm").mkdir()
+    (flutter_repo / ".fvm" / "fvm_config.json").write_text(
+        '{"flutterSdkVersion": "3.24.0"}', encoding="utf-8"
+    )
+    assert "fvm (Flutter 3.24.0)" in build_project_facts(
+        flutter_repo, name="app", layout="single"
+    )
+
+
+def test_no_toolchain_line_without_a_version_manager(flutter_repo: Path) -> None:
+    """Most repos use neither; claiming fvm would be wrong."""
+    assert "Toolchain:" not in build_project_facts(flutter_repo, name="app", layout="single")

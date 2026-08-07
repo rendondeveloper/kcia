@@ -5,11 +5,24 @@ description: "Shared Dart and Flutter engineering guidance."
 abstract: true
 extends: null
 commands:
-  install: "fvm dart pub get"
-  test: "fvm dart test"
-  lint: "fvm dart analyze"
-  verify: "fvm dart test && fvm dart analyze"
-  codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
+  install: "dart pub get"
+  test: "dart test"
+  lint: "dart analyze"
+  verify: "dart test && dart analyze"
+  codegen: "dart run build_runner build --delete-conflicting-outputs"
+command_overrides:
+  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
+  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  - when:
+      any:
+        - file_exists: ".fvmrc"
+        - file_exists: ".fvm/fvm_config.json"
+    commands:
+      install: "fvm dart pub get"
+      test: "fvm dart test"
+      lint: "fvm dart analyze"
+      verify: "fvm dart test && fvm dart analyze"
+      codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
 references:
   - { path: references/coding.md, tags: [coding] }
   - { path: references/testing.md, tags: [testing] }

@@ -246,10 +246,10 @@ Layout: monorepo. Detected 4 packages.
 
 | Path | Profile | Test | Lint |
 |---|---|---|---|
-| packages/api | backend-dart | `fvm dart test` | `fvm dart analyze` |
-| packages/app_mobile | mobile-flutter | `fvm flutter test` | `fvm flutter analyze` |
-| packages/app_web | web-flutter | `fvm flutter test` | `fvm flutter analyze` |
-| packages/shared | backend-dart | `fvm dart test` | `fvm dart analyze` |
+| packages/api | backend-dart | `dart test` | `dart analyze` |
+| packages/app_mobile | mobile-flutter | `flutter test` | `flutter analyze` |
+| packages/app_web | web-flutter | `flutter test` | `flutter analyze` |
+| packages/shared | backend-dart | `dart test` | `dart analyze` |
 
 ## Profile bundle: backend-dart
 

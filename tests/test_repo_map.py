@@ -24,7 +24,10 @@ def test_melos_repo_map_lists_packages(melos_session) -> None:
     assert "## Repository map" in prompt
     assert "| packages/api | backend-dart |" in prompt
     api_row = next(line for line in prompt.splitlines() if "packages/api" in line)
-    assert "`fvm dart test`" in api_row
+    # The fixture pins no Flutter version, so the plain command is the correct one:
+    # `fvm dart test` would fail on any machine without fvm installed.
+    assert "`dart test`" in api_row
+    assert "fvm" not in api_row
     assert "flutter test" not in api_row
     repo_map = next(section for section in stats.sections if section.name == "repo-map")
     assert repo_map.tokens < 400

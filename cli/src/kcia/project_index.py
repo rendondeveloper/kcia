@@ -95,7 +95,28 @@ def _stack_line(repo_root: Path, *, name: str, layout: str) -> str:
     line = f"{name} — {layout} {', '.join(parts)}."
     if platforms:
         line += f"\nPlatforms: {', '.join(platforms)}."
+    toolchain = _toolchain(repo_root)
+    if toolchain:
+        line += f"\nToolchain: {toolchain}."
     return line
+
+
+def _toolchain(repo_root: Path) -> str:
+    """Version managers that change how commands must be invoked.
+
+    The commands themselves live in the profile and reach the prompt through the
+    repository map; this only records the fact, so the two cannot drift.
+    """
+    notes: list[str] = []
+
+    pinned = _read_json(repo_root / ".fvmrc") or _read_json(repo_root / ".fvm" / "fvm_config.json")
+    if pinned is not None:
+        version = pinned.get("flutter") or pinned.get("flutterSdkVersion")
+        notes.append(f"fvm (Flutter {version})" if version else "fvm")
+
+    if (repo_root / "melos.yaml").is_file():
+        notes.append("melos")
+    return ", ".join(notes)
 
 
 def _workspace_line(repo_root: Path, *, name: str) -> str:
