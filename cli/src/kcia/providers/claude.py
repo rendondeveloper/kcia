@@ -53,16 +53,47 @@ class ClaudeAdapter:
             return AuthStatus.NOT_INSTALLED
         try:
             result = subprocess.run(
-                [executable, "--version"],
+                [executable, "auth", "status"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=30,
             )
         except (OSError, subprocess.TimeoutExpired):
             return AuthStatus.UNKNOWN
         if result.returncode != 0:
             return AuthStatus.NOT_AUTHENTICATED
-        return AuthStatus.AUTHENTICATED
+        # `claude auth status` reports JSON; a bare `--version` would succeed even
+        # when logged out, so it cannot stand in for an auth check.
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return AuthStatus.UNKNOWN
+        if not isinstance(payload, dict) or "loggedIn" not in payload:
+            return AuthStatus.UNKNOWN
+        return AuthStatus.AUTHENTICATED if payload["loggedIn"] else AuthStatus.NOT_AUTHENTICATED
+
+    def account(self) -> str | None:
+        """Identity the provider reports, for `kcia doctor`."""
+        executable = self.locate()
+        if executable is None:
+            return None
+        try:
+            result = subprocess.run(
+                [executable, "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            payload = json.loads(result.stdout)
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        email = payload.get("email")
+        plan = payload.get("subscriptionType")
+        if email and plan:
+            return f"{email} ({plan})"
+        return email or None
 
     def build_command(self, req: RunRequest) -> list[str]:
         executable = self.locate() or self.executable

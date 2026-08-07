@@ -67,18 +67,44 @@ class CursorAdapter:
         executable = self.locate()
         if executable is None:
             return AuthStatus.NOT_INSTALLED
+        # `cursor-agent status` is the real check; `--version` succeeds logged out.
         try:
             result = subprocess.run(
-                [executable, "--version"],
+                [executable, "status"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=30,
             )
         except (OSError, subprocess.TimeoutExpired):
             return AuthStatus.UNKNOWN
         if result.returncode != 0:
             return AuthStatus.NOT_AUTHENTICATED
-        return AuthStatus.AUTHENTICATED
+        return (
+            AuthStatus.AUTHENTICATED
+            if "logged in" in result.stdout.lower()
+            else AuthStatus.NOT_AUTHENTICATED
+        )
+
+    def account(self) -> str | None:
+        """Identity the provider reports, for `kcia doctor`."""
+        executable = self.locate()
+        if executable is None:
+            return None
+        try:
+            result = subprocess.run(
+                [executable, "status"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if result.returncode != 0:
+            return None
+        for line in result.stdout.splitlines():
+            if "logged in as" in line.lower():
+                return line.split("as", 1)[1].strip()
+        return None
 
     def build_command(self, req: RunRequest) -> list[str]:
         executable = self.locate() or self.executable

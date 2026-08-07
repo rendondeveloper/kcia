@@ -7,7 +7,41 @@ structured, auditable pipeline — without calling any LLM API directly.
 
 - Python 3.11+
 - `git`
-- At least one provider CLI: `claude` (Claude Code) or `cursor-agent` (Cursor)
+- A provider CLI, **installed and logged in**, for each role you use
+
+kcia never calls an LLM API. It shells out to the CLI you already have, so that CLI — and
+its session — is a hard requirement, not an optional integration:
+
+| Provider | Binary | Install | Log in | Check |
+|---|---|---|---|---|
+| Claude Code | `claude` | `npm i -g @anthropic-ai/claude-code` or `brew install --cask claude-code` | `claude auth login` | `claude auth status` |
+| Cursor | `cursor-agent` | install Cursor, enable the CLI from the command palette | `cursor-agent login` | `cursor-agent status` |
+
+The default setup uses **both**: `planner` on Claude Code and `builder` on Cursor. One CLI is
+enough only if you point both roles at the same provider (`kcia agent set builder claude …`).
+Billing is whatever those subscriptions already cost you — kcia adds none of its own.
+
+**`kcia doctor` answers all of this for your machine**: Python and git, whether each provider
+is installed and authenticated (and as whom), whether your configured agents can actually
+run, and whether the repository is initialized. Run it first when anything looks wrong.
+
+```
+Providers
+  ✓ claude: authenticated as you@example.com (pro)
+  ! cursor: not installed
+      Instala Cursor y habilita el CLI desde la paleta de comandos.
+
+Agents
+  ✓ planner: claude/claude-opus-5 (global)
+  ✗ builder: cursor/composer-2.5 (global)
+      `cursor` is not installed, so this role cannot run.
+```
+
+You do not need to remember to run it: `kcia wave run` performs the same check for the
+configured roles **before the first wave**, and refuses to start with the install or login
+hint. That matters because the builder's provider is not exercised until the fourth wave —
+without the upfront check, three planner waves would burn tokens before a missing
+`cursor-agent` surfaced.
 
 ## Install
 
@@ -653,7 +687,8 @@ Being honest about what the code does not yet do:
 | Profiles | `profile list/show/detect/validate/scaffold`, inheritance, packs, resolution |
 | Agents | `agent set/show/swap` — Claude and Cursor adapters |
 | Tasks | `task init/show/inject/abort` — with `--scope` for path-limited profiles |
-| Waves | `wave list/run/retry/skip/logs` — session, lock, prompt composition, validation |
+| Waves | `wave list/run/approve/plan/retry/skip/logs` — session, lock, prompt composition, validation |
+| Diagnostics | `doctor` — toolchain, provider install and auth, agent and repo readiness |
 
-**Not yet implemented** — these commands exit 1: `kcia doctor`, `kcia sync`, `kcia ask`,
-`kcia branch`, `kcia auth`, `kcia mcp`.
+**Not yet implemented** — these commands exit 1: `kcia sync`, `kcia ask`, `kcia branch`,
+`kcia auth`, `kcia mcp`.

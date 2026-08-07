@@ -17,6 +17,7 @@ from kcia.waves.progress import WaveProgress
 from kcia.waves.runner import (
     ApprovalRequired,
     approval_document,
+    check_agents_ready,
     next_pending_wave,
     run_wave,
     run_waves_until,
@@ -173,6 +174,14 @@ def _execute(
     quiet: bool,
     yes: bool,
 ) -> None:
+    problems = check_agents_ready(session.repo_root)
+    if problems:
+        typer.echo("Cannot start — the configured agents are not ready:")
+        for problem in problems:
+            typer.echo(f"  - {problem}")
+        typer.echo("Run `kcia doctor` for the full picture.")
+        raise typer.Exit(code=1)
+
     reporter = _ProgressReporter(enabled=not quiet)
     run_started = time.monotonic()
 

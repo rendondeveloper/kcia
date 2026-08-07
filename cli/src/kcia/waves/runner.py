@@ -88,6 +88,44 @@ def check_requires(session: Session, wave: WaveDefinition, *, force: bool = Fals
         )
 
 
+def check_agents_ready(repo_root: Path | None) -> list[str]:
+    """Problems that would stop a run, for every configured role.
+
+    Checked up front because the builder's provider is not exercised until the
+    fourth wave: without this, three planner waves burn tokens before a missing
+    or logged-out `cursor-agent` surfaces.
+    """
+    from kcia.providers.base import AuthStatus
+
+    problems: list[str] = []
+    catalog = load_catalog()
+    agents = resolve_agents(repo_root)
+    checked: dict[str, AuthStatus] = {}
+
+    for role, agent in agents.items():
+        entry = catalog.get(agent.provider)
+        if entry is None:
+            problems.append(f"{role}: unknown provider `{agent.provider}`")
+            continue
+
+        if agent.provider not in checked:
+            adapter = get_adapter(agent.provider)
+            checked[agent.provider] = (
+                AuthStatus.NOT_INSTALLED if adapter.locate() is None else adapter.check_auth()
+            )
+        status = checked[agent.provider]
+
+        if status is AuthStatus.NOT_INSTALLED:
+            problems.append(
+                f"{role} needs `{agent.provider}`, which is not installed. {entry.install_hint}"
+            )
+        elif status is AuthStatus.NOT_AUTHENTICATED:
+            problems.append(
+                f"{role} needs `{agent.provider}`, which is not authenticated. {entry.auth_hint}"
+            )
+    return problems
+
+
 def approval_document(session: Session, wave: WaveDefinition) -> Path | None:
     """The artifact a human reviews before approving this wave, if it exists."""
     if not wave.approval_shows:
