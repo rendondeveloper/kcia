@@ -1,12 +1,43 @@
 # kcia
 
-Control plane and CLI for development agents (Claude Code, Cursor, and future providers).
+**Control plane + CLI** that drives your existing agent tools (Claude Code, Cursor) through a
+structured, auditable pipeline — without calling any LLM API directly.
+
+## Objective
+
+kcia exists to give coding agents **the right guidance at the right moment**, while keeping
+prompts as small as possible.
+
+The guiding principle:
+
+> **Python resolves what has a single verifiable answer** — which files exist, which profile
+> owns a path, which command runs where, whether a test passed.
+> **The model decides what depends on the concrete problem** — what is relevant, how to
+> design the solution.
+
+Concretely, kcia:
+
+1. **Detects** the technologies in your repository and maps them to **profiles** (YAML +
+   Markdown packs — no Python per technology).
+2. **Composes** a prompt per pipeline step (**wave**) from guardrails, profile references,
+   project context, and task state — filtering and budgeting what goes in so the model is
+   not flooded with guidance it does not need yet.
+3. **Runs** the provider CLI you already pay for (`claude`, `cursor-agent`) as a subprocess,
+   with real permission restrictions and per-profile validation after implementation.
+4. **Persists** everything on disk — prompts, outputs, token counts — so every step is
+   inspectable and the planner → builder handoff is a file, not a conversation thread.
+
+You install kcia **once** on your machine. Each project only gets a `.ai/` directory
+(gitignored) when you run `kcia init`.
 
 ## Concepts
 
-- **Profiles** — extensible data packages that declare detection rules, commands, and coding guidance per technology.
-- **Agents** — two roles (`planner`, `builder`), each mapped to a `(provider, model)` pair.
-- **Waves** — five sequential pipeline steps from understanding through documentation.
+| Concept | What it is |
+|---|---|
+| **Profile** | A technology pack: detection rules, shell commands, coding references, boolean rules. |
+| **Agent** | One of two roles — `planner` or `builder` — each mapped to a `(provider, model)` pair. |
+| **Wave** | One of five sequential pipeline steps, from understanding through documentation. |
+| **Task** | A unit of work started with `kcia task init`, tracked in `.ai/local/session.json`. |
 
 ## Requirements
 
@@ -16,66 +47,82 @@ Control plane and CLI for development agents (Claude Code, Cursor, and future pr
 
 ## Install
 
-You install kcia **once, globally**. You do not install it into each project you work
-on — see [Where kcia lives](#where-kcia-lives) below.
+kcia is installed **from a git clone**, not with `pipx` — the CLI needs `control-plane/` on
+disk next to `cli/` (see [Why not `pipx install`](#why-not-pipx-install)).
 
-**1. Clone the repository.** Keep the clone; it is not disposable (see
-[Why not `pipx install`](#why-not-pipx-install)).
+### Step 1 — Clone
 
 ```bash
 git clone https://github.com/rendondeveloper/kcia.git ~/tools/kcia
 cd ~/tools/kcia
 ```
 
-**2. Create the virtualenv and install the CLI in editable mode.**
+Keep this directory. It is your distribution copy, not a disposable checkout.
+
+### Step 2 — Virtualenv and editable install
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e "./cli[dev]"
 ```
 
-**3. Put the CLI on your PATH.**
+### Step 3 — Add to PATH
 
 ```bash
 echo 'export PATH="$HOME/tools/kcia/.venv/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-**4. Verify.**
+On bash, append the same line to `~/.bashrc` instead.
+
+### Step 4 — Verify
 
 ```bash
-kcia --version        # kcia 0.1.0
-kcia profile list     # backend-dart / mobile-flutter / web-flutter
+kcia --version        # e.g. kcia 0.1.0
+kcia profile list     # backend-dart, mobile-flutter, web-flutter
 ```
 
-If `profile list` prints nothing, the CLI cannot find `control-plane/` — you are running
-a copy installed outside the clone. Redo step 2 from inside the clone.
+If `profile list` is empty, the CLI cannot find `control-plane/`. You are probably running
+a broken install outside the clone — repeat steps 2–3 from inside `~/tools/kcia`.
+
+### Step 5 — Configure agents (once)
+
+```bash
+kcia agent set planner claude --model claude-opus-5
+kcia agent set builder cursor --model claude-sonnet-5
+kcia agent show
+```
+
+Preferences are stored in `~/.config/kcia/config.yaml` and apply to every project unless
+overridden per repo with `--scope repo`.
 
 ### Why not `pipx install`
 
-`pipx install ./cli` and `pipx install "git+https://github.com/rendondeveloper/kcia.git#subdirectory=cli"`
-both install the CLI but produce a **broken runtime**. `control-plane/` lives outside
-`cli/`, so no Python build backend can bundle it into the wheel; `control_plane_root()`
-then resolves to a path that does not exist and every command that needs profiles,
-waves, roles, guardrails, or the provider catalog comes up empty.
+`pipx install ./cli` and
+`pipx install "git+https://github.com/rendondeveloper/kcia.git#subdirectory=cli"` both
+install the CLI but produce a **broken runtime**. `control-plane/` lives outside `cli/`, so
+no Python build backend can bundle it into the wheel; `control_plane_root()` then resolves
+to a path that does not exist and every command that needs profiles, waves, roles,
+guardrails, or the provider catalog comes up empty.
 
-Keep the clone. The editable install above keeps `control-plane/` on disk where the CLI
-can find it. Packaged installs will be supported once `kcia sync` lands (see Status).
+Packaged installs will be supported once `kcia sync` lands (see [Status](#status)).
 
 ## Updating
 
-New versions are published to `master`. Updating is done **in your clone**, never in the
-projects you use kcia on.
+New versions land on `master`. Update **in your clone** (`~/tools/kcia`), never inside the
+projects you work on.
+
+### Routine update
 
 ```bash
 cd ~/tools/kcia
 
-# 1. Take master exactly as published, discarding local changes.
+# 1. Take master exactly as published (discards local changes in the clone).
 git fetch origin
 git reset --hard origin/master
 git clean -fd
 
-# 2. Reinstall so the CLI picks up the new code.
+# 2. Reinstall so the venv picks up new code.
 .venv/bin/pip install -e "./cli[dev]" --force-reinstall --no-deps
 
 # 3. Confirm.
@@ -83,22 +130,34 @@ kcia --version
 kcia profile list
 ```
 
-`git reset --hard` discards anything you changed inside the clone. That is intended: the
-clone is a distribution copy, not a place to edit. Your own projects are untouched.
+`git reset --hard` is intentional: the clone is a distribution copy, not a place to edit.
+Your own projects are untouched.
 
-Check `CHANGELOG.md` after updating. Two versions move independently: the CLI version
-(`kcia --version`) and the control plane (`control-plane/VERSION` — profiles, waves,
-templates). If the control plane changed, re-run detection in each project to pick up the
-new guidance:
+### After updating — refresh your projects
+
+Read `CHANGELOG.md` first. Two versions move independently:
+
+| Version | Command | What it tracks |
+|---|---|---|
+| CLI | `kcia --version` | Python code, commands, runner |
+| Control plane | `cat control-plane/VERSION` | Profiles, waves, guardrails, templates |
+
+If the control plane version changed, regenerate guidance in each project:
 
 ```bash
 cd /path/to/your/project
+kcia init --yes          # idempotent — rewrites only what changed
+```
+
+Or, if you only need to refresh detection:
+
+```bash
 kcia profile detect
 ```
 
-### Full reset
+### Full reset (if something still looks wrong)
 
-If the CLI still misbehaves after updating, rebuild the environment from scratch:
+Rebuild the kcia environment from scratch:
 
 ```bash
 cd ~/tools/kcia
@@ -114,10 +173,10 @@ In a project where generated output looks stale:
 ```bash
 cd /path/to/your/project
 rm -rf .ai/generated .ai/cache
-kcia profile detect
+kcia init --yes
 ```
 
-Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours and are committed.
+Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours.
 
 ### Uninstall
 
@@ -160,32 +219,46 @@ profile pack and install it with `kcia profile add`.
 Nothing from kcia's own dependency tree is installed into your project, and your project
 needs no Python.
 
-## Quickstart
+## Quickstart — first task in a project
 
-Run kcia from inside the project you want it to work on:
+Run these from **inside the repository** you want kcia to work on:
 
 ```bash
 cd /path/to/your/project
 
-kcia init                                        # detect, generate, gitignore
-kcia agent set planner claude --model claude-opus-5
-kcia agent set builder cursor --model claude-sonnet-5
-kcia agent show
+# 1. Detect technologies, write manifest, generate adapters (idempotent).
+kcia init --yes
 
+# 2. Start a task.
 kcia task init "fix the overflow on the profile screen"
+
+# Optional: limit which packages drive active profiles.
+kcia task init "fix the API" --scope packages/api
+
+# 3. Inspect the pipeline.
 kcia wave list
-kcia wave run                                    # runs the next pending wave
+
+# 4. Run waves one at a time (or omit the wave id to run the next pending).
+kcia wave run
+kcia wave run understanding
+kcia wave run --until analysis
+
+# 5. Inspect progress and token usage.
+kcia task show
+kcia wave logs understanding
 ```
 
-`kcia init` detects the technologies in the repository, writes `.ai/manifest.yaml`, the
-composed profile bundles, and the provider adapters (`CLAUDE.md`, `AGENTS.md`,
-`.cursor/rules/*.mdc`), and adds all of it to `.gitignore`. It is idempotent: run it again
-after updating kcia and it rewrites only what changed. Use `--yes` in CI or non-interactive
-shells, and `--no-gitignore` if you would rather manage the ignore rules yourself.
+`kcia init` writes `.ai/manifest.yaml`, composed profile bundles, provider adapters
+(`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/*.mdc`), and adds all generated paths to
+`.gitignore`. Run it again after updating kcia — it only rewrites what changed
+(`Already up to date` when nothing moved).
 
-`kcia agent set` without `--scope repo` writes to `~/.config/kcia/config.yaml` and applies
-to every project. Use `--scope repo` to override the choice for one repository only
-(written to `.ai/local/agents.yaml`, gitignored).
+Use `--yes` in CI or non-interactive shells. Use `--no-gitignore` if you manage ignore
+rules yourself.
+
+Agent configuration (`kcia agent set`) is done once on your machine — see
+[Install, step 5](#step-5--configure-agents-once). Use `--scope repo` to override per
+repository (written to `.ai/local/agents.yaml`, gitignored).
 
 ## How it works
 
@@ -197,23 +270,38 @@ events. Your subscription, your models, your machine.
 ```mermaid
 flowchart TD
     A["kcia wave run"] --> B["Session<br/>.ai/local/session.json"]
-    B --> C["Resolve agent for the wave<br/>planner or builder → provider + model"]
-    C --> D["Compose the prompt<br/>waves/prompts.py"]
-    R["Role<br/>agents/roles.yaml"] --> D
-    G["Guardrails<br/>guardrails/*.md"] --> D
+    B --> C["Resolve agent<br/>planner or builder → provider + model"]
+    C --> D["Compose prompt<br/>filter refs by wave · apply budget · repo map"]
+    R["Role"] --> D
+    G["Guardrails"] --> D
+    M["Repository map"] --> D
     P["Profile bundles<br/>references + rules"] --> D
     X["Context<br/>.ai/context/*.md"] --> D
-    T["Wave instruction<br/>waves/prompts/*.j2"] --> D
-    D --> E["Write it to disk<br/>.ai/local/runs/&lt;wave&gt;-NN.prompt.md"]
-    E --> F["Subprocess<br/>prompt via stdin"]
-    F --> H["claude --print --output-format stream-json<br/>cursor-agent --print --output-format stream-json"]
-    H --> I["Parse stdout line by line<br/>→ normalized StreamEvents"]
-    I --> J["Write the wave output<br/>.ai/context/plan.md, task.md, …"]
-    J --> K{"validation:<br/>required?"}
-    K -->|yes| L["Run each profile's test/lint<br/>in its own root"]
-    K -->|no| M["Mark completed"]
+    T["Wave instruction"] --> D
+    D --> E["Write prompt to disk<br/>.ai/local/runs/&lt;wave&gt;-NN.prompt.md"]
+    E --> F["Subprocess — prompt via stdin"]
+    F --> H["claude / cursor-agent<br/>stream-json stdout"]
+    H --> I["Parse → StreamEvents"]
+    I --> J["Write wave output<br/>task.md, plan.md, …"]
+    J --> K{"validation<br/>required?"}
+    K -->|yes| L["Run test/lint per profile root"]
+    K -->|no| N["Mark completed"]
     L -->|failed| D
-    L -->|passed| M
+    L -->|passed| N
+```
+
+### End-to-end flow
+
+```
+your project/          ~/tools/kcia/              provider CLI
+─────────────          ─────────────              ────────────
+kcia init         →    detect + control-plane  →  (no model yet)
+kcia task init    →    session.json
+kcia wave run     →    compose prompt        →    claude / cursor-agent
+                       write prompt.md            ↓
+                       parse stdout         ←    stream-json events
+                       write plan.md
+                       run dart test / flutter test
 ```
 
 ### 1. Profiles decide which guidance applies where
@@ -288,42 +376,49 @@ conversation.
 
 ### 4. How the prompt is composed
 
-`waves/prompts.py` assembles one string in a fixed order. Nothing is hidden; the exact text
-sent is written to `.ai/local/runs/<wave>-NN.prompt.md` on every run, including retries.
+`waves/prompts.py` assembles one string in a **fixed order**. Nothing is hidden — the exact
+text sent is written to `.ai/local/runs/<wave>-NN.prompt.md` on every run, including
+retries. Token usage per section is tracked internally for budgeting decisions.
 
-1. **Role** — from `control-plane/agents/roles.yaml`, the `expected_outputs` for `planner`
-   or `builder`
-2. **Guardrails** — `policies.yaml`, `input-filter.md`, `tool-control.md`,
-   `output-validation.md`, plus `reasoning-limits.md` on the `implementation` wave only
-3. **Project context** — `.ai/context/project.md`
-4. **Profile bundles** — for each active profile: its references (parent-first through the
-   inheritance chain), then its boolean rules. References are filtered per wave via
-   `reference_tags` in `waves.yaml`; a reference tagged `coding` is injected only in waves
-   that request that tag. When the composed prompt exceeds the context budget, lower-priority
-   tags are dropped whole-file in `drop_order` and a `## Context budget` footer lists what
-   was omitted.
-5. **Repository map** — a precomputed table of packages, profiles, and test/lint commands
-   (from `manifest.yaml`), inserted after project context
-6. **Task context** — `.ai/context/task.md`, plus `ticket.md` in ticket mode
-7. **Previous wave output** — `plan.md`, on `implementation` and `documentation-final`
-8. **Validation error** — on a retry, the failing command's actual output
-9. **Injections** — anything added with `kcia task inject "<text>"`
-10. **Wave instruction** — rendered from `control-plane/waves/prompts/<wave>.md.j2`
-11. **Output format**
+| # | Section | Source |
+|---|---|---|
+| 1 | Role | `control-plane/agents/roles.yaml` |
+| 2 | Guardrails | `control-plane/guardrails/*` (+ `reasoning-limits.md` on `implementation` only) |
+| 3 | Project context | `.ai/context/project.md` |
+| 4 | Repository map | precomputed from `manifest.yaml` — packages, profiles, test/lint commands |
+| 5 | Profile bundles | references (filtered) + boolean rules, per active profile |
+| 6 | Task context | `.ai/context/task.md` (+ `ticket.md` in ticket mode) |
+| 7 | Previous wave output | `plan.md` on `implementation` and `documentation-final` |
+| 8 | Validation error | injected on retry with the failing command's real output |
+| 9 | Injections | anything added with `kcia task inject "<text>"` |
+| 10 | Wave instruction | `control-plane/waves/prompts/<wave>.md.j2` |
+| 11 | Output format | fixed footer |
+| 12 | Context budget | only when references were dropped to fit the budget |
 
-`kcia task init` accepts repeatable `--scope <path>` to limit which manifest roots drive
-profile resolution (for example `--scope packages/api`).
+**Reference filtering.** Each reference file carries tags (`coding`, `testing`,
+`architecture`, …). Each wave declares which tags it wants via `reference_tags` in
+`waves.yaml`. The `understanding` wave requests `[coding, monorepo]`; `implementation`
+requests `[coding, testing, validation, api, data, web, accessibility]`. Waves with
+`reference_tags: []` inject rules but no reference files.
+
+**Context budget.** When the composed prompt would exceed `budget.max_prompt_tokens`
+(default 120 000, overridable in `~/.config/kcia/config.yaml` → `preferences.max_prompt_tokens`),
+whole reference files are dropped tag-by-tag following `budget.drop_order`. A
+`## Context budget` footer lists what was omitted. Guardrails are never truncated.
+
+**Task scope.** `kcia task init --scope packages/api` limits which manifest roots drive
+profile resolution, so a task that only touches the API package does not pull in Flutter
+profile bundles.
 
 Measured on `tests/fixtures/repos/melos_mono` with one active profile (`backend-dart`):
 
-| Metric | Before | After |
+| Metric | Before optimization | After |
 |---|---|---|
 | Tokens per task (5 waves) | ~14 834 | ~12 655 (~15% lower) |
 | `understanding` wave | ~2 958 | ~2 482 (~16% lower) |
 
-Guardrails are plain Markdown files in the control plane, read and inlined at composition
-time. Editing one changes agent behavior on the next run with no code change and no
-reinstall.
+Guardrails are plain Markdown in the control plane — edit them and the next `kcia wave run`
+picks up the change with no reinstall.
 
 ### 5. How Python talks to the model CLIs
 
@@ -453,10 +548,15 @@ Being honest about what the code does not yet do:
 
 ## Status
 
-Implemented and usable: `kcia init` (detection, manifest, bundles, adapters, gitignore),
-profiles (detection, inheritance, packs, resolution), providers (Claude and Cursor
-adapters, agent configuration), and the wave engine (session, lock, prompt composition,
-multi-profile validation).
+**Implemented and usable**
 
-Not yet implemented — these commands exit 1: `kcia doctor`, `kcia sync`, `kcia ask`,
+| Area | Commands / features |
+|---|---|
+| Project setup | `kcia init` — detection, manifest, bundles, adapters, gitignore |
+| Profiles | `profile list/show/detect/validate/scaffold`, inheritance, packs, resolution |
+| Agents | `agent set/show/swap` — Claude and Cursor adapters |
+| Tasks | `task init/show/inject/abort` — with `--scope` for path-limited profiles |
+| Waves | `wave list/run/retry/skip/logs` — session, lock, prompt composition, validation |
+
+**Not yet implemented** — these commands exit 1: `kcia doctor`, `kcia sync`, `kcia ask`,
 `kcia branch`, `kcia auth`, `kcia mcp`.
