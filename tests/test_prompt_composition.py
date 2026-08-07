@@ -12,10 +12,11 @@ from kcia.waves.prompts import build_prompt, build_prompt_with_stats
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_FIXTURE = ROOT / "tests" / "fixtures" / "prompts" / "understanding-baseline.md"
 PHASE0_UNDERSTANDING_TOKENS = 2955
-# Subió de 2482 a 2491 al añadir la sección `task-statement`: el enunciado de la tarea
-# nunca llegaba al prompt, así que este alza no es una regresión de contexto sino
-# contenido obligatorio que faltaba. El presupuesto solo puede bajar desde aquí.
-PHASE1_UNDERSTANDING_TOKENS = 2491
+# 2482 -> 2491: sección `task-statement`, el enunciado nunca llegaba al prompt.
+# 2491 -> 2493: project.md pasó de `TODO` a hechos derivados del repositorio.
+# Ninguna de las dos es una regresión de contexto: es contenido que faltaba o que
+# antes era un marcador vacío. El presupuesto solo puede bajar desde aquí.
+PHASE1_UNDERSTANDING_TOKENS = 2493
 
 
 def test_baseline_prompt_size(melos_session) -> None:

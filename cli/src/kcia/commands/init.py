@@ -16,6 +16,7 @@ from kcia.profiles.bundle import write_bundle, write_if_changed
 from kcia.profiles.detector import DetectionHit, detect
 from kcia.profiles.inheritance import resolve_inheritance
 from kcia.profiles.loader import load_registry
+from kcia.project_index import build_project_facts
 from kcia.render import render_template
 
 # Everything kcia generates inside a project is regenerable from `kcia init`,
@@ -38,6 +39,11 @@ def init(
     ),
     no_gitignore: bool = typer.Option(
         False, "--no-gitignore", help="Do not touch the project's .gitignore."
+    ),
+    refresh_context: bool = typer.Option(
+        False,
+        "--refresh-context",
+        help="Regenerate .ai/context/project.md, discarding local edits to it.",
     ),
 ) -> None:
     """Initialize `.ai/` and generated adapters in the current repository."""
@@ -64,7 +70,11 @@ def init(
 
     written: list[Path] = []
     written += _write_manifest(repo_root, entries)
-    written += _write_context(repo_root)
+    written += _write_context(
+        repo_root,
+        layout="monorepo" if len(entries) > 1 else "single",
+        refresh=refresh_context,
+    )
     written += _write_bundles(repo_root, registry, entries)
     written += _write_adapters(repo_root, registry, entries)
     if not no_gitignore:
@@ -260,17 +270,21 @@ def _write_manifest(repo_root: Path, entries: list[dict]) -> list[Path]:
     return [path]
 
 
-def _write_context(repo_root: Path) -> list[Path]:
+def _write_context(repo_root: Path, *, layout: str, refresh: bool = False) -> list[Path]:
     templates = control_plane_root() / "templates"
     path = repo_root / ".ai" / "context" / "project.md"
-    if path.is_file():
+    # The file is yours once it exists: it is the one place to add what only a
+    # human knows. `--refresh-context` opts back into the generated version.
+    if path.is_file() and not refresh:
         return []
-    content = render_template(
-        templates,
-        "project.md.j2",
-        summary="TODO: describe this project.",
-        architecture="TODO: describe the architecture.",
-    )
+
+    facts = build_project_facts(repo_root, name=repo_root.name, layout=layout)
+    if not facts:
+        facts = (
+            "## Summary\nUNKNOWN — kcia could not derive the stack from this repository.\n"
+            "Describe it here; this section is injected into every wave."
+        )
+    content = render_template(templates, "project.md.j2", facts=facts)
     return [path] if write_if_changed(path, content) else []
 
 

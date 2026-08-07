@@ -475,11 +475,43 @@ detect:
 | `.ai/manifest.yaml` | active profiles, their roots, detection evidence |
 | `.ai/generated/profiles/<id>/references.md` | the profile's references, concatenated parent-first with the declaring profile noted |
 | `.ai/generated/profiles/<id>/profile.md` | commands, rules, inheritance chain, validation requirements |
-| `.ai/context/project.md` | project description injected into every prompt |
+| `.ai/context/project.md` | project facts injected into every prompt — **yours to edit** |
 | `CLAUDE.md`, `AGENTS.md` | adapters listing active profiles and authority order |
 | `.cursor/rules/NN-<id>.mdc` | one Cursor rule per profile, with `globs` scoped to that profile's roots |
 
 All of it is gitignored and regenerable — rerun `kcia init` any time.
+
+`project.md` is the one exception to "regenerable": `init` seeds it with facts it can verify
+— stack and SDK, platforms, key dependencies, entry point and source directories (or, for a
+workspace, its member packages) — and then **never overwrites it**, because it is the place
+to add what only you know. `kcia init --refresh-context` regenerates it, discarding your
+edits.
+
+It is deliberately small (capped at ~400 tokens) and deliberately factual. Interpretation —
+what the domain is, what each file does — is left out: it ages badly, nobody updates it, and
+the agent reads the code anyway. The generated block for a real single-package Flutter app
+costs about 70 tokens:
+
+```markdown
+## Summary
+ReaderGps — single Flutter project, Dart SDK ^3.9.2.
+Platforms: linux, macos, web, windows.
+
+## Key dependencies
+flutter_libserialport, permission_handler, device_info_plus
+
+## Source layout
+- `lib/main.dart` — entry point
+- `lib/`: models, services, widgets
+- `test/` — tests
+```
+
+It is injected into **all five waves** rather than filtered per wave. That is on purpose:
+measured on a real run, the planner waves share a ~2.070-token prompt prefix and the builder
+waves share ~1.588, and `project.md` sits inside both. Varying it per wave would break that
+shared prefix — costing more in lost prompt caching than the omitted text would save. If it
+ever grows past its budget, the right move is to split it into tagged references and reuse
+the existing `reference_tags` filtering, not to invent a second mechanism.
 
 ### 3. A task moves through five waves
 

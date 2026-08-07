@@ -226,10 +226,8 @@ arregla el overflow
 # Project
 
 ## Summary
-TODO: describe this project.
-
-## Architecture
-TODO: describe the architecture.
+melos_mono — Melos (Dart/Flutter) workspace.
+Packages: api, app_mobile, app_web, shared.
 
 ## Operating Conventions
 - Keep changes small and bounded.
