@@ -1,0 +1,4 @@
+name: app_web
+dependencies:
+  flutter:
+    sdk: flutter

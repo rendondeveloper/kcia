@@ -1,0 +1,25 @@
+schema_version: 1
+providers:
+  claude:
+    display_name: "Claude Code"
+    executable: claude
+    install_hint: "npm i -g @anthropic-ai/claude-code  o  brew install --cask claude-code"
+    auth: subscription
+    auth_hint: "Ejecuta `claude` y completa el login."
+    models:
+      - { id: claude-opus-5, tier: max, best_for: [planning, complex-implementation] }
+      - { id: claude-sonnet-5, tier: balanced, best_for: [implementation, review] }
+      - { id: claude-haiku-4-5, tier: fast, best_for: [documentation, pr-preparation] }
+    default_model: claude-sonnet-5
+  cursor:
+    display_name: "Cursor"
+    executable: cursor-agent
+    install_hint: "Instala Cursor y habilita el CLI desde la paleta de comandos."
+    auth: subscription
+    auth_hint: "Inicia sesión en Cursor."
+    models:
+      - { id: claude-opus-5, tier: max }
+      - { id: claude-sonnet-5, tier: balanced }
+      - { id: gpt-5.5, tier: max }
+      - { id: gemini-3.5-flash, tier: fast }
+    default_model: claude-sonnet-5

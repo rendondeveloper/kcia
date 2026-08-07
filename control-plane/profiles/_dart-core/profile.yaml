@@ -1,0 +1,44 @@
+schema_version: 2
+id: _dart-core
+display_name: "Dart Core"
+description: "Shared Dart and Flutter engineering guidance."
+abstract: true
+extends: null
+commands:
+  install: "fvm dart pub get"
+  test: "fvm dart test"
+  lint: "fvm dart analyze"
+  verify: "fvm dart test && fvm dart analyze"
+  codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
+references:
+  - references/coding.md
+  - references/testing.md
+  - references/validation.md
+  - references/architecture.md
+  - references/monorepo.md
+workflows:
+  - workflows/feature.md
+  - workflows/bugfix.md
+  - workflows/refactor.md
+  - workflows/pr-review.md
+rules:
+  require_tests_for_code_changes: true
+  require_descriptive_naming: true
+  require_low_complexity_changes: true
+  forbid_secret_exposure: true
+  forbid_print_in_production: true
+  require_freezed_over_equatable: true
+  require_generated_json_serialization: true
+  forbid_manual_generated_file_edits: true
+  require_clean_architecture_boundaries: true
+  require_layer_and_feature_barrels: true
+  require_package_imports_with_show_across_boundaries: true
+  require_mapper_classes_for_model_entity_mapping: true
+  require_dcm_for_modified_files_when_available: true
+  require_i18n_for_user_visible_text: true
+  require_descriptive_identifiers: true
+  forbid_single_line_control_flow: true
+validation:
+  required_commands: [test, lint]
+  optional_commands: [build]
+  retry_limit: 3

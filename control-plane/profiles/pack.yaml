@@ -1,0 +1,10 @@
+schema_version: 1
+name: kcia-builtin
+version: 1.0.0
+description: "Official Dart profiles for kcia"
+kcia_min_version: "0.1.0"
+profiles:
+  - _dart-core
+  - mobile-flutter
+  - web-flutter
+  - backend-dart

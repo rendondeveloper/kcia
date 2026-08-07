@@ -1,0 +1,31 @@
+schema_version: 1
+
+policy:
+  role_source: "control-plane/agents/roles.yaml"
+  skill_source: "control-plane/skills/catalog.yaml"
+  rules:
+    - "Roles document how each agent should work; they do not trigger autonomous multi-agent execution."
+    - "kcia uses exactly two agents: planner and builder."
+
+roles:
+  - id: planner
+    agent: planner
+    waves:
+      - understanding
+      - analysis
+      - documentation-init
+    expected_outputs:
+      - "clear problem statement"
+      - "bounded impact area"
+      - "implementation plan with validation strategy"
+      - "initialized operational context"
+
+  - id: builder
+    agent: builder
+    waves:
+      - implementation
+      - documentation-final
+    expected_outputs:
+      - "minimal code change with tests"
+      - "validation evidence or explicit blockers"
+      - "milestone entry when the task is complete"

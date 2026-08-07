@@ -1,0 +1,178 @@
+"""Provider and agent configuration tests — Fase 2 acceptance criteria."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from kcia.config import (
+    GLOBAL_CONFIG_FILE,
+    load_global_config,
+    load_repo_agents,
+    resolve_agents,
+    set_agent,
+    swap_agents,
+)
+from kcia.providers.base import RunRequest
+from kcia.providers.claude import ClaudeAdapter
+from kcia.providers.catalog import load_catalog
+from kcia.providers.events import (
+    FileRead,
+    StreamState,
+    TextDelta,
+    ToolCallStart,
+    TurnEnd,
+    UsageUpdate,
+)
+from kcia.providers.registry import get_adapter
+
+ROOT = Path(__file__).resolve().parents[1]
+KCIA = ROOT / ".venv" / "bin" / "kcia"
+STREAM_FIXTURE = ROOT / "tests" / "fixtures" / "providers" / "claude_stream.jsonl"
+
+
+@pytest.fixture
+def isolated_global_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    config_dir = tmp_path / "config" / "kcia"
+    config_dir.mkdir(parents=True)
+    config_file = config_dir / "config.yaml"
+    monkeypatch.setattr("kcia.config.GLOBAL_CONFIG_DIR", config_dir)
+    monkeypatch.setattr("kcia.config.GLOBAL_CONFIG_FILE", config_file)
+    return config_file
+
+
+@pytest.fixture
+def git_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    return repo
+
+
+def test_claude_build_command_disallows_edits() -> None:
+    adapter = ClaudeAdapter(load_catalog()["claude"])
+    req = RunRequest(
+        prompt="test",
+        model="claude-sonnet-5",
+        allow_edits=False,
+        stream=True,
+        workspace_dirs=[Path("/tmp")],
+        session_id=None,
+        resume=False,
+        effort=None,
+        allowed_tools=None,
+        disallowed_tools=None,
+        cwd=Path("/tmp"),
+    )
+    cmd = adapter.build_command(req)
+    assert "--disallowed-tools" in cmd
+    idx = cmd.index("--disallowed-tools")
+    disallowed = cmd[idx + 1 : idx + 4]
+    assert "Edit" in disallowed
+    assert "Write" in disallowed
+    assert "NotebookEdit" in disallowed
+    assert "--permission-mode" in cmd
+    assert cmd[cmd.index("--permission-mode") + 1] == "default"
+
+
+def test_claude_parse_stream_line_fixture() -> None:
+    adapter = ClaudeAdapter(load_catalog()["claude"])
+    state = StreamState()
+    events = []
+    for line in STREAM_FIXTURE.read_text(encoding="utf-8").splitlines():
+        events.extend(adapter.parse_stream_line(line, state))
+
+    assert any(isinstance(event, TextDelta) for event in events)
+    assert any(isinstance(event, ToolCallStart) for event in events)
+    assert any(isinstance(event, FileRead) for event in events)
+    assert any(isinstance(event, UsageUpdate) for event in events)
+    assert any(isinstance(event, TurnEnd) for event in events)
+    assert state.session_id == "sess-abc-123"
+    assert state.final_text == "Hello world"
+
+
+def test_claude_parse_stream_line_garbage_returns_empty() -> None:
+    adapter = ClaudeAdapter(load_catalog()["claude"])
+    state = StreamState()
+    assert adapter.parse_stream_line("not json at all", state) == []
+    assert adapter.parse_stream_line("", state) == []
+
+
+def test_agent_set_persists_global(isolated_global_config: Path) -> None:
+    set_agent("planner", "claude", model="claude-opus-5", scope="global")
+    config = load_global_config()
+    assert config["agents"]["planner"]["provider"] == "claude"
+    assert config["agents"]["planner"]["model"] == "claude-opus-5"
+
+    resolved = resolve_agents()
+    assert resolved["planner"].provider == "claude"
+    assert resolved["planner"].model == "claude-opus-5"
+    assert resolved["planner"].origin == "global"
+
+
+def test_agent_set_repo_scope(git_repo: Path, isolated_global_config: Path) -> None:
+    set_agent(
+        "builder",
+        "cursor",
+        model="claude-sonnet-5",
+        scope="repo",
+        repo_root=git_repo,
+    )
+    agents = load_repo_agents(git_repo)
+    assert agents["builder"]["provider"] == "cursor"
+    assert agents["builder"]["model"] == "claude-sonnet-5"
+    assert (git_repo / ".ai" / "local" / "agents.yaml").is_file()
+
+    resolved = resolve_agents(git_repo)
+    assert resolved["builder"].origin == "repo"
+    assert resolved["builder"].provider == "cursor"
+
+
+def test_repo_local_is_gitignored() -> None:
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert ".ai/local/" in gitignore
+
+
+def test_agent_swap_exchanges_provider_model_effort(
+    isolated_global_config: Path,
+) -> None:
+    set_agent("planner", "claude", model="claude-opus-5", effort="high", scope="global")
+    set_agent("builder", "cursor", model="gpt-5.5", effort="low", scope="global")
+    swap_agents(scope="global")
+
+    resolved = resolve_agents()
+    assert resolved["planner"].provider == "cursor"
+    assert resolved["planner"].model == "gpt-5.5"
+    assert resolved["planner"].effort == "low"
+    assert resolved["builder"].provider == "claude"
+    assert resolved["builder"].model == "claude-opus-5"
+    assert resolved["builder"].effort == "high"
+
+
+def test_invalid_model_raises() -> None:
+    with pytest.raises(ValueError, match="unknown model"):
+        set_agent("planner", "claude", model="modelo-inventado", scope="global")
+
+
+def test_unknown_provider_raises() -> None:
+    with pytest.raises(ValueError, match="unknown provider"):
+        set_agent("planner", "no-such-provider", scope="global")
+
+
+def test_get_adapter_unknown_provider() -> None:
+    with pytest.raises(KeyError, match="unknown provider"):
+        get_adapter("missing-provider")
+
+
+def test_agent_models_lists_catalog() -> None:
+    result = subprocess.run(
+        [str(KCIA), "agent", "models", "claude"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    assert result.returncode == 0
+    assert "claude-sonnet-5" in result.stdout
+    assert "(default)" in result.stdout

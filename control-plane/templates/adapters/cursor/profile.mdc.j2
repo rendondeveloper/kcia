@@ -1,0 +1,16 @@
+---
+description: Profile-specific guidance for {{ profile.display_name }}
+globs: {{ globs | tojson }}
+alwaysApply: false
+---
+
+# {{ profile.display_name }}
+
+Profile id: `{{ profile.id }}`
+
+Roots:
+{% for root in profile.roots %}
+- `{{ root }}`
+{% endfor %}
+
+Follow the bundled references in `.ai/generated/profiles/{{ profile.id }}/`.

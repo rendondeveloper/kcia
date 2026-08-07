@@ -1,0 +1,6 @@
+{"type": "system", "subtype": "init", "session_id": "sess-abc-123"}
+{"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hello"}}
+{"type": "content_block_delta", "delta": {"type": "text_delta", "text": " world"}}
+{"type": "tool_use", "name": "Read", "input": {"file_path": "/repo/lib/main.dart"}}
+{"type": "tool_result", "name": "Read", "tool_input": {"file_path": "/repo/lib/main.dart"}, "is_error": false}
+{"type": "result", "result": "Hello world", "usage": {"input_tokens": 100, "output_tokens": 20, "cache_read_input_tokens": 5}}

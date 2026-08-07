@@ -1,0 +1,47 @@
+schema_version: 1
+waves:
+  - id: understanding
+    order: 1
+    agent: planner
+    allow_edits: false
+    writes: [".ai/context/task.md"]
+    requires: []
+    description: "Entender el problema y delimitar el alcance."
+    can_ask_questions: true
+    prompt_template: understanding.md.j2
+
+  - id: analysis
+    order: 2
+    agent: planner
+    allow_edits: false
+    writes: [".ai/context/plan.md"]
+    requires: [understanding]
+    description: "Diseñar la solución y declarar profiles y validación."
+    prompt_template: analysis.md.j2
+
+  - id: documentation-init
+    order: 3
+    agent: planner
+    allow_edits: true
+    edit_scope: [".ai/**"]
+    writes: [".ai/context/current.md", ".ai/context/decisions.md"]
+    requires: [analysis]
+    prompt_template: documentation-init.md.j2
+
+  - id: implementation
+    order: 4
+    agent: builder
+    allow_edits: true
+    edit_scope: ["**"]
+    requires: [analysis]
+    validation: required
+    prompt_template: implementation.md.j2
+
+  - id: documentation-final
+    order: 5
+    agent: builder
+    allow_edits: true
+    edit_scope: [".ai/**"]
+    writes: [".ai/context/milestones.md"]
+    requires: [implementation]
+    prompt_template: documentation-final.md.j2

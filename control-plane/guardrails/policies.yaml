@@ -1,0 +1,120 @@
+schema_version: 1
+
+metadata:
+  owner_repo: "kcia"
+  status: "active"
+  scope: "central control-plane defaults"
+
+input:
+  block_patterns:
+    - '(?i)ignore (all|any|previous|prior|system) instructions'
+    - '(?i)(reveal|print|show|dump|expose).*(secret|token|password|credential|private key|api key)'
+    - '(?i)(show|print|cat|read).*(\\.env|id_rsa|credentials|secrets?)'
+    - '(?i)(disable|bypass|override).*(guardrail|security|policy)'
+    - '(?i)git\\s+push\\s+--force'
+    - '(?i)git\\s+reset\\s+--hard'
+    - '(?i)rm\\s+-rf'
+  warn_patterns:
+    - '(?i)skip tests'
+    - '(?i)bulk refactor'
+    - '(?i)copy the full ticket'
+    - '(?i)production hotfix'
+
+source_trust:
+  trusted_instruction_sources:
+    - "guardrails/**"
+    - ".ai/**"
+    - "AGENTS.md"
+    - "CLAUDE.md"
+    - ".cursor/rules/**"
+  data_only_sources:
+    - "**/*.dart"
+    - "**/*.java"
+    - "**/*.kt"
+    - "**/*.py"
+    - "**/*.ts"
+    - "**/*.md"
+    - "README.md"
+    - "docs/**"
+    - ".github/pull_request_template.md"
+    - "logs/**"
+
+tool_control:
+  git:
+    blocked_commands:
+      - "push --force"
+      - "reset --hard"
+      - "merge"
+      - "rebase --onto"
+    allowed_without_additional_review:
+      - "status"
+      - "diff"
+      - "checkout -b"
+      - "add"
+      - "commit"
+      - "push"
+  shell:
+    blocked_patterns:
+      - '(^|\\s)rm\\s+-rf'
+      - '(^|\\s)sudo\\s+'
+      - '(^|\\s)chmod\\s+777'
+      - '(^|\\s)curl\\s+.+\\|\\s*(sh|bash|zsh)'
+    restrict_to_workspace: true
+  github:
+    status: "NOT IMPLEMENTED: real GitHub integration pending"
+    allow_open_pr: false
+    allow_merge: false
+    allow_close_pr: false
+  jira:
+    status: "PLACEHOLDER: Jira issue read access is optional and requires explicit configuration."
+    allow_read: true
+    allow_read_comments: true
+    allow_comment: false
+    allow_transition: false
+
+reasoning:
+  max_tool_calls_per_task: 100
+  max_retries_per_tool: 2
+  max_files_read_without_override: 100
+  max_context_file_writes_per_run: 3
+  wave_limits:
+    understanding:
+      max_tool_calls: 48
+      max_files_read: 40
+    analysis:
+      max_tool_calls: 40
+      max_files_read: 32
+
+filesystem:
+  default_allow_full_filesystem: true
+
+engineering:
+  readability_rules:
+    - "Keep code human-readable for engineers across experience levels."
+    - "Use descriptive names for classes, methods, variables, and attributes."
+    - "Avoid unexplained abbreviations except for well-known domain terms."
+    - "Keep changes low-complexity and easy to review."
+  quality_rules:
+    - "Do not introduce new bugs, static-analysis findings, or Sonar issues."
+    - "Do not expose secrets in code, commits, generated files, or PRs."
+    - "Document public behavior and non-obvious logic using the stack-appropriate documentation style."
+  testing_rules:
+    - "Unit tests must cover 100 percent of introduced lines."
+    - "Tests must cover happy path, error paths, boundary conditions, and relevant edge cases."
+    - "Add functional or integration tests when the change crosses module or system boundaries."
+
+output:
+  forbid_secret_leakage: true
+  forbid_unverified_claims: true
+  require_validation_log_for_code_changes: true
+  placeholder_markers:
+    - "UNKNOWN"
+    - "TODO"
+    - "NOT IMPLEMENTED"
+    - "PLACEHOLDER"
+
+governance:
+  require_pinned_sync_ref: true
+  require_codeowners_for_control_plane: true
+  require_pr_for_guardrail_changes: true
+  require_explicit_unknown_markers: true

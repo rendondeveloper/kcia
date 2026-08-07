@@ -1,0 +1,1 @@
+"""MCP registration and OAuth."""

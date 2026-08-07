@@ -1,0 +1,3 @@
+name: api
+dependencies:
+  dart_frog: ^1.0.0
