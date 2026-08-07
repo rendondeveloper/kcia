@@ -10,6 +10,7 @@ from kcia.paths import control_plane_root
 from kcia.profiles.inheritance import resolve_inheritance
 from kcia.profiles.loader import load_registry
 from kcia.render import render_template
+from kcia.waves.budget import PromptStats, SectionStat, estimate_tokens
 from kcia.waves.definitions import WaveDefinition, prompts_dir
 from kcia.waves.session import Session, context_dir, load_manifest
 
@@ -20,8 +21,26 @@ def build_prompt(
     *,
     validation_error: str | None = None,
 ) -> str:
+    prompt, _ = build_prompt_with_stats(wave, session, validation_error=validation_error)
+    return prompt
+
+
+def build_prompt_with_stats(
+    wave: WaveDefinition,
+    session: Session,
+    *,
+    validation_error: str | None = None,
+) -> tuple[str, PromptStats]:
     repo_root = session.repo_root
     sections: list[str] = []
+    stats = PromptStats()
+
+    def add_section(name: str, content: str) -> None:
+        stats.sections.append(
+            SectionStat(name=name, chars=len(content), tokens=estimate_tokens(content))
+        )
+        if content:
+            sections.append(content)
 
     roles_path = control_plane_root() / "agents" / "roles.yaml"
     roles_data = yaml.safe_load(roles_path.read_text(encoding="utf-8")) or {}
@@ -29,14 +48,19 @@ def build_prompt(
         (item for item in roles_data.get("roles", []) if item.get("agent") == wave.agent),
         None,
     )
+    role_parts: list[str] = []
     if role:
-        sections.append(f"# Role: {wave.agent}\n")
+        role_parts.append(f"# Role: {wave.agent}\n")
         for output in role.get("expected_outputs", []):
-            sections.append(f"- {output}")
-        sections.append("")
+            role_parts.append(f"- {output}")
+        role_parts.append("")
+    add_section("role", "\n".join(role_parts))
 
-    sections.extend(_guardrails_for_wave(wave.id))
-    sections.append(_read_context_file(repo_root, "project.md"))
+    guardrails = "\n".join(_guardrails_for_wave(wave.id))
+    add_section("guardrails", guardrails)
+
+    project_context = _read_context_file(repo_root, "project.md")
+    add_section("project-context", project_context)
 
     registry = load_registry(repo_root)
     profile_ids = session.data.get("active_profiles") or []
@@ -50,28 +74,39 @@ def build_prompt(
         if profile_id not in registry.profiles:
             continue
         resolved = resolve_inheritance(profile_id, registry)
-        sections.append(f"## Profile bundle: {profile_id}\n")
-        for owner, reference in resolved.references:
+        profile_parts: list[str] = [f"## Profile bundle: {profile_id}\n"]
+        for _owner, reference in resolved.references:
             if reference.is_file():
-                sections.append(reference.read_text(encoding="utf-8"))
-                sections.append("")
-        sections.append("### Rules\n")
+                profile_parts.append(reference.read_text(encoding="utf-8"))
+                profile_parts.append("")
+        profile_parts.append("### Rules\n")
         for key, value in resolved.rules.items():
-            sections.append(f"- {key}: {value}")
-        sections.append("")
+            profile_parts.append(f"- {key}: {value}")
+        profile_parts.append("")
+        add_section(f"profile:{profile_id}", "\n".join(profile_parts))
 
-    sections.append(_read_context_file(repo_root, "task.md"))
+    task_context = _read_context_file(repo_root, "task.md")
+    add_section("task-context", task_context)
+
+    ticket_context = ""
     if session.task.get("mode") == "ticket":
-        sections.append(_read_context_file(repo_root, "ticket.md"))
+        ticket_context = _read_context_file(repo_root, "ticket.md")
+    add_section("ticket-context", ticket_context)
 
+    plan_context = ""
     if wave.id in {"implementation", "documentation-final"}:
-        sections.append(_read_context_file(repo_root, "plan.md"))
+        plan_context = _read_context_file(repo_root, "plan.md")
+    add_section("plan-context", plan_context)
 
+    validation_error_section = ""
     if validation_error:
-        sections.append(f"## Previous validation error\n\n{validation_error}\n")
+        validation_error_section = f"## Previous validation error\n\n{validation_error}\n"
+    add_section("validation-error", validation_error_section)
 
+    injection_parts: list[str] = []
     for injection in session.data.get("injections", []):
-        sections.append(f"## Injected context\n\n{injection}\n")
+        injection_parts.append(f"## Injected context\n\n{injection}\n")
+    add_section("injections", "\n".join(injection_parts))
 
     wave_instruction = render_template(
         prompts_dir(),
@@ -79,10 +114,13 @@ def build_prompt(
         can_ask_questions=wave.can_ask_questions,
         validation_error=validation_error,
     )
-    sections.append(wave_instruction)
-    sections.append("\n## Output format\nRespond in Markdown.\n")
+    add_section("wave-instruction", wave_instruction)
 
-    return "\n".join(part for part in sections if part)
+    output_format = "\n## Output format\nRespond in Markdown.\n"
+    add_section("output-format", output_format)
+
+    prompt = "\n".join(part for part in sections if part)
+    return prompt, stats
 
 
 def _guardrails_for_wave(wave_id: str) -> list[str]:
