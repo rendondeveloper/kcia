@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -175,4 +176,33 @@ def test_agent_models_lists_catalog() -> None:
     )
     assert result.returncode == 0
     assert "claude-sonnet-5" in result.stdout
-    assert "(default)" in result.stdout
+    assert "default" in result.stdout
+    # Tier and best_for come from the catalog and must reach the user.
+    assert "balanced" in result.stdout
+    assert "best for: implementation, review" in result.stdout
+
+
+def test_agent_models_json_lists_tier_and_best_for() -> None:
+    result = subprocess.run(
+        [str(KCIA), "agent", "models", "claude", "--json"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["claude"]["default_model"] == "claude-sonnet-5"
+    sonnet = next(m for m in payload["claude"]["models"] if m["id"] == "claude-sonnet-5")
+    assert sonnet["tier"] == "balanced"
+    assert sonnet["best_for"] == ["implementation", "review"]
+
+
+def test_agent_models_rejects_unknown_provider() -> None:
+    result = subprocess.run(
+        [str(KCIA), "agent", "models", "does-not-exist"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    assert result.returncode == 1
+    assert "Available: claude, cursor" in result.stdout

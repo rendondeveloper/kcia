@@ -79,14 +79,43 @@ rc and tells you to `source` it.
 
 ### Configure agents (once)
 
+See what each provider offers, then pick:
+
 ```bash
+kcia agent models              # every provider, its models, tier and what each is best for
+kcia agent models claude       # one provider
+kcia agent models --json       # same data, scriptable
+
 kcia agent set planner claude --model claude-opus-5
 kcia agent set builder cursor --model claude-sonnet-5
 kcia agent show
 ```
 
 Preferences are stored in `~/.config/kcia/config.yaml` and apply to every project unless
-overridden per repo with `--scope repo`.
+overridden per repo — see [Per-project models](#per-project-models).
+
+### Per-project models
+
+To use different agents in one repository, set them with `--scope repo` from inside it:
+
+```bash
+cd /path/to/your/project
+kcia agent set planner claude --model claude-opus-5 --scope repo
+kcia agent show                # the `origin` column shows repo / global / default
+```
+
+Resolution order, highest first:
+
+| Origin | Where |
+|---|---|
+| `flag` | a `--provider` / `--model` flag on the command being run |
+| `repo` | `<project>/.ai/local/agents.yaml` |
+| `global` | `~/.config/kcia/config.yaml` |
+| `default` | the provider catalog |
+
+Note that `.ai/local/` is gitignored, so a repo-scoped choice is **yours on this machine**
+— it does not travel with the repository. There is currently no committed, team-wide way to
+pin models for a project; each person runs the `--scope repo` command in their own clone.
 
 ### Why not `pipx install`
 
@@ -245,8 +274,9 @@ Use `--yes` in CI or non-interactive shells. Use `--no-gitignore` if you manage 
 rules yourself.
 
 Agent configuration (`kcia agent set`) is done once on your machine — see
-[Install, step 5](#step-5--configure-agents-once). Use `--scope repo` to override per
-repository (written to `.ai/local/agents.yaml`, gitignored).
+[Configure agents](#configure-agents-once). Use `--scope repo` to override per repository
+(written to `.ai/local/agents.yaml`, gitignored) — see
+[Per-project models](#per-project-models).
 
 ## How it works
 

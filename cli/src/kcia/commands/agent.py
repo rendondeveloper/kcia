@@ -118,17 +118,52 @@ def agent_swap(
 @app.command("models")
 def agent_models(
     provider: Optional[str] = typer.Argument(None, help="Filter by provider id."),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON."),
 ) -> None:
     catalog = load_catalog()
     registry = build_registry()
     providers = [provider] if provider else sorted(catalog)
+
     for provider_id in providers:
         if provider_id not in catalog:
-            typer.echo(f"Unknown provider `{provider_id}`.")
+            known = ", ".join(sorted(catalog))
+            typer.echo(f"Unknown provider `{provider_id}`. Available: {known}")
             raise typer.Exit(code=1)
+
+    def _installed(provider_id: str) -> bool:
+        return provider_id in registry and registry[provider_id].locate() is not None
+
+    if as_json:
+        payload = {
+            provider_id: {
+                "display_name": catalog[provider_id].display_name,
+                "executable": catalog[provider_id].executable,
+                "installed": _installed(provider_id),
+                "default_model": catalog[provider_id].default_model,
+                "models": [
+                    {"id": m.id, "tier": m.tier, "best_for": m.best_for or []}
+                    for m in catalog[provider_id].models
+                ],
+            }
+            for provider_id in providers
+        }
+        typer.echo(json.dumps(payload, indent=2))
+        return
+
+    for provider_id in providers:
         entry = catalog[provider_id]
-        installed = provider_id in registry and registry[provider_id].locate() is not None
-        typer.echo(f"{provider_id} ({entry.display_name}){' [installed]' if installed else ''}")
+        status = "installed" if _installed(provider_id) else "not installed"
+        typer.echo(f"{provider_id} ({entry.display_name}) [{status}]")
         for model in entry.models:
-            default = " (default)" if model.id == entry.default_model else ""
-            typer.echo(f"  {model.id}{default}")
+            details = []
+            if model.tier:
+                details.append(model.tier)
+            if model.id == entry.default_model:
+                details.append("default")
+            if model.best_for:
+                details.append("best for: " + ", ".join(model.best_for))
+            suffix = f" — {'; '.join(details)}" if details else ""
+            typer.echo(f"  {model.id}{suffix}")
+        if not _installed(provider_id) and entry.install_hint:
+            typer.echo(f"  install: {entry.install_hint}")
+        typer.echo(f"  use: kcia agent set <planner|builder> {provider_id} --model <id>")
