@@ -9,6 +9,7 @@ import typer
 
 from kcia.config import (
     AgentScope,
+    model_in_catalog,
     resolve_agents,
     set_agent,
     swap_agents,
@@ -49,6 +50,11 @@ def agent_show(
         if item.effort:
             typer.echo(f"  effort: {item.effort}")
         typer.echo(f"  origin: {item.origin}")
+        if not model_in_catalog(item.provider, item.model):
+            typer.echo(
+                f"  warning: `{item.model}` is not offered by `{item.provider}` anymore; "
+                f"run `kcia agent models {item.provider}`"
+            )
 
 
 @app.command("set")
@@ -119,6 +125,11 @@ def agent_swap(
 def agent_models(
     provider: Optional[str] = typer.Argument(None, help="Filter by provider id."),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON."),
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Ask the installed CLI which models it offers and flag catalog drift.",
+    ),
 ) -> None:
     catalog = load_catalog()
     registry = build_registry()
@@ -150,10 +161,19 @@ def agent_models(
         typer.echo(json.dumps(payload, indent=2))
         return
 
+    drift = 0
     for provider_id in providers:
         entry = catalog[provider_id]
         status = "installed" if _installed(provider_id) else "not installed"
         typer.echo(f"{provider_id} ({entry.display_name}) [{status}]")
+
+        offered: list[str] | None = None
+        if live:
+            discover = getattr(registry.get(provider_id), "discover_models", None)
+            offered = discover() if callable(discover) else None
+            if offered is None:
+                typer.echo("  (live check unavailable for this provider)")
+
         for model in entry.models:
             details = []
             if model.tier:
@@ -162,8 +182,19 @@ def agent_models(
                 details.append("default")
             if model.best_for:
                 details.append("best for: " + ", ".join(model.best_for))
+            if offered is not None and model.id not in offered:
+                details.append("NOT OFFERED by the installed CLI")
+                drift += 1
             suffix = f" — {'; '.join(details)}" if details else ""
             typer.echo(f"  {model.id}{suffix}")
         if not _installed(provider_id) and entry.install_hint:
             typer.echo(f"  install: {entry.install_hint}")
         typer.echo(f"  use: kcia agent set <planner|builder> {provider_id} --model <id>")
+
+    if drift:
+        typer.echo("")
+        typer.echo(
+            f"{drift} catalog entr{'y' if drift == 1 else 'ies'} no longer exist upstream. "
+            "Update control-plane/providers/catalog.yaml."
+        )
+        raise typer.Exit(code=1)

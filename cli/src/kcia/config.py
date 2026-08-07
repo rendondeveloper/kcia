@@ -153,6 +153,19 @@ def resolve_agents(
     return resolved
 
 
+def model_in_catalog(provider: str, model: str) -> bool:
+    """Whether the provider still offers this model id.
+
+    Stored configuration outlives the catalog: a model that is renamed upstream
+    stays in config.yaml and silently reaches the provider as an invalid id.
+    """
+    catalog = load_catalog()
+    entry = catalog.get(provider)
+    if entry is None:
+        return False
+    return any(item.id == model for item in entry.models)
+
+
 def set_agent(
     role: str,
     provider: str,

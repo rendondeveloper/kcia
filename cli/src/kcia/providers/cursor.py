@@ -40,6 +40,29 @@ class CursorAdapter:
     def list_models(self) -> list[str]:
         return [model.id for model in self._catalog.models]
 
+    def discover_models(self) -> list[str] | None:
+        """Model ids the installed CLI actually offers, or None if unavailable.
+
+        The catalog is curated by hand and drifts as Cursor renames models, so
+        `kcia agent models --live` uses this to surface entries that no longer
+        exist before they end up in someone's config.
+        """
+        executable = self.locate()
+        if executable is None:
+            return None
+        try:
+            result = subprocess.run(
+                [executable, "--list-models"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if result.returncode != 0:
+            return None
+        return _parse_model_list(result.stdout)
+
     def check_auth(self) -> AuthStatus:
         executable = self.locate()
         if executable is None:
@@ -129,3 +152,20 @@ class CursorAdapter:
 
     def new_session_id(self) -> str | None:
         return None
+
+
+def _parse_model_list(stdout: str) -> list[str]:
+    """Extract ids from `cursor-agent --list-models` output.
+
+    Lines look like `composer-2.5 - Composer 2.5`; headers, blank lines and the
+    trailing tip are ignored.
+    """
+    models: list[str] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line or " - " not in line:
+            continue
+        candidate = line.split(" - ", 1)[0].strip()
+        if candidate and " " not in candidate:
+            models.append(candidate)
+    return models

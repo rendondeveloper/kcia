@@ -17,9 +17,15 @@ providers:
     install_hint: "Instala Cursor y habilita el CLI desde la paleta de comandos."
     auth: subscription
     auth_hint: "Inicia sesión en Cursor."
+    # Ids verificados con `cursor-agent --list-models`. Cursor usa ids propios
+    # (con sufijo de esfuerzo), no los de la API de Anthropic: `claude-sonnet-5`
+    # a secas NO existe aquí. Lista curada, no exhaustiva.
     models:
-      - { id: claude-opus-5, tier: max }
-      - { id: claude-sonnet-5, tier: balanced }
-      - { id: gpt-5.5, tier: max }
-      - { id: gemini-3.5-flash, tier: fast }
-    default_model: claude-sonnet-5
+      - { id: auto, tier: balanced, best_for: [general, cost-control] }
+      - { id: composer-2.5, tier: fast, best_for: [implementation, refactor] }
+      - { id: composer-2.5-fast, tier: fast, best_for: [documentation] }
+      - { id: claude-opus-5-thinking-high, tier: max, best_for: [planning, complex-implementation] }
+      - { id: claude-sonnet-5-thinking-high, tier: balanced, best_for: [implementation, review] }
+      - { id: gpt-5.3-codex, tier: max, best_for: [implementation] }
+      - { id: gemini-3.5-flash, tier: fast, best_for: [documentation] }
+    default_model: auto

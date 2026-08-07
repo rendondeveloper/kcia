@@ -117,13 +117,13 @@ def test_agent_set_repo_scope(git_repo: Path, isolated_global_config: Path) -> N
     set_agent(
         "builder",
         "cursor",
-        model="claude-sonnet-5",
+        model="composer-2.5",
         scope="repo",
         repo_root=git_repo,
     )
     agents = load_repo_agents(git_repo)
     assert agents["builder"]["provider"] == "cursor"
-    assert agents["builder"]["model"] == "claude-sonnet-5"
+    assert agents["builder"]["model"] == "composer-2.5"
     assert (git_repo / ".ai" / "local" / "agents.yaml").is_file()
 
     resolved = resolve_agents(git_repo)
@@ -140,12 +140,12 @@ def test_agent_swap_exchanges_provider_model_effort(
     isolated_global_config: Path,
 ) -> None:
     set_agent("planner", "claude", model="claude-opus-5", effort="high", scope="global")
-    set_agent("builder", "cursor", model="gpt-5.5", effort="low", scope="global")
+    set_agent("builder", "cursor", model="composer-2.5", effort="low", scope="global")
     swap_agents(scope="global")
 
     resolved = resolve_agents()
     assert resolved["planner"].provider == "cursor"
-    assert resolved["planner"].model == "gpt-5.5"
+    assert resolved["planner"].model == "composer-2.5"
     assert resolved["planner"].effort == "low"
     assert resolved["builder"].provider == "claude"
     assert resolved["builder"].model == "claude-opus-5"
@@ -206,3 +206,45 @@ def test_agent_models_rejects_unknown_provider() -> None:
     )
     assert result.returncode == 1
     assert "Available: claude, cursor" in result.stdout
+
+
+def test_catalog_cursor_models_use_real_ids() -> None:
+    """Cursor uses its own ids, not Anthropic API ids; `claude-sonnet-5` is not one."""
+    ids = [model.id for model in load_catalog()["cursor"].models]
+    assert "auto" in ids
+    assert "composer-2.5" in ids
+    assert "claude-sonnet-5" not in ids
+    assert "gpt-5.5" not in ids
+
+
+def test_every_catalog_default_is_one_of_its_own_models() -> None:
+    for provider_id, entry in load_catalog().items():
+        ids = [model.id for model in entry.models]
+        assert entry.default_model in ids, f"{provider_id} default is not in its model list"
+
+
+def test_model_in_catalog_detects_stale_configuration() -> None:
+    from kcia.config import model_in_catalog
+
+    assert model_in_catalog("cursor", "composer-2.5")
+    assert not model_in_catalog("cursor", "claude-sonnet-5")
+    assert not model_in_catalog("no-such-provider", "auto")
+
+
+def test_cursor_parses_its_list_models_output() -> None:
+    from kcia.providers.cursor import _parse_model_list
+
+    stdout = (
+        "Available models\n"
+        "\n"
+        "auto - Auto (default)\n"
+        "composer-2.5 - Composer 2.5\n"
+        "claude-opus-5-thinking-high - Opus 5 1M Thinking\n"
+        "\n"
+        "Tip: use --model <id> (or /model <id> in interactive mode) to switch.\n"
+    )
+    assert _parse_model_list(stdout) == [
+        "auto",
+        "composer-2.5",
+        "claude-opus-5-thinking-high",
+    ]

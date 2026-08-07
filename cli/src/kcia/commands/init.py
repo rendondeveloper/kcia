@@ -10,6 +10,7 @@ from pathlib import Path
 import typer
 import yaml
 
+from kcia.config import model_in_catalog, resolve_agents
 from kcia.paths import control_plane_root, find_repo_root
 from kcia.profiles.bundle import write_bundle, write_if_changed
 from kcia.profiles.detector import DetectionHit, detect
@@ -76,6 +77,42 @@ def init(
         typer.echo(f"{len(written)} file(s) written.")
     else:
         typer.echo("Already up to date.")
+
+    _report_agents(repo_root)
+
+
+def _report_agents(repo_root: Path) -> None:
+    """Show which agents will run, or how to choose them.
+
+    Agents are what actually execute the waves, so an unconfigured repo would
+    otherwise only discover the defaults when a run is already under way.
+    """
+    resolved = resolve_agents(repo_root)
+    unset = [role for role, item in resolved.items() if item.origin == "default"]
+    typer.echo("")
+    if unset:
+        typer.echo("No agents configured yet — waves would run on catalog defaults:")
+        for role in unset:
+            item = resolved[role]
+            typer.echo(f"  {role}: {item.provider}/{item.model}")
+        typer.echo("Set them before running the pipeline:")
+        typer.echo("  kcia agent models                       see the options")
+        typer.echo("  kcia agent set planner claude --model <id>")
+        typer.echo("  kcia agent set builder cursor --model <id>")
+        return
+
+    typer.echo("Agents:")
+    stale = False
+    for role, item in resolved.items():
+        typer.echo(f"  {role}: {item.provider}/{item.model} ({item.origin})")
+        if not model_in_catalog(item.provider, item.model):
+            stale = True
+            typer.echo(
+                f"    warning: `{item.model}` is not offered by `{item.provider}` anymore. "
+                f"Run `kcia agent models {item.provider}` and set a valid one."
+            )
+    if not stale:
+        typer.echo("Next: kcia task init \"<what you want>\"")
 
 
 def _resolve_ambiguities(hits: list[DetectionHit], *, interactive: bool) -> list[DetectionHit]:

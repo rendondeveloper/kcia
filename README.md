@@ -85,14 +85,24 @@ See what each provider offers, then pick:
 kcia agent models              # every provider, its models, tier and what each is best for
 kcia agent models claude       # one provider
 kcia agent models --json       # same data, scriptable
+kcia agent models --live       # ask the installed CLI and flag stale catalog entries
 
 kcia agent set planner claude --model claude-opus-5
-kcia agent set builder cursor --model claude-sonnet-5
+kcia agent set builder cursor --model composer-2.5
 kcia agent show
 ```
 
+Do this **before `kcia init`** — agents are what execute the waves, and `init` closes by
+reporting which ones it will use (or how to pick them, when none are set).
+
 Preferences are stored in `~/.config/kcia/config.yaml` and apply to every project unless
 overridden per repo — see [Per-project models](#per-project-models).
+
+Note that **Cursor uses its own model ids**, not Anthropic's: `composer-2.5`,
+`claude-sonnet-5-thinking-high`, `auto`, and so on — plain `claude-sonnet-5` is not one of
+them. `auto` is Cursor's default and lets it pick per request. The catalog in
+`control-plane/providers/catalog.yaml` is curated by hand, so `kcia agent models --live`
+compares it against `cursor-agent --list-models` and exits non-zero on drift.
 
 ### Per-project models
 
@@ -243,28 +253,33 @@ Run these from **inside the repository** you want kcia to work on:
 ```bash
 cd /path/to/your/project
 
-# 1. Detect technologies, write manifest, generate adapters (idempotent).
-kcia init --yes
+# 1. Choose who runs the waves — do this BEFORE init.
+kcia agent models                # see what each provider offers
+kcia agent set planner claude --model claude-opus-5
+kcia agent set builder cursor --model composer-2.5
 
-# 2. Start a task.
+# 2. Detect technologies, write manifest, generate adapters (idempotent).
+kcia init --yes                  # closes by reporting the agents it will use
+
+# 3. Start a task.
 kcia task init "fix the overflow on the profile screen"
 
 # Optional: limit which packages drive active profiles.
 kcia task init "fix the API" --scope packages/api
 
-# 3. Inspect the pipeline.
+# 4. Inspect the pipeline.
 kcia wave list
 
-# 4. Run waves one at a time (or omit the wave id to run the next pending).
+# 5. Run waves one at a time (or omit the wave id to run the next pending).
 kcia wave run
 kcia wave run understanding
 kcia wave run --until analysis
 kcia wave run --quiet            # no live progress line (CI, logs)
 
-# 5. Review the plan, then let the build run.
+# 6. Review the plan, then let the build run.
 kcia wave approve
 
-# 6. Inspect progress and token usage.
+# 7. Inspect progress and token usage.
 kcia task show
 kcia wave logs understanding
 ```
@@ -303,8 +318,8 @@ While a wave runs, a live status line reports which agent is working, on which p
 model, and what it is doing right now:
 
 ```
-⠹ implementation · builder · cursor/claude-sonnet-5 — writing lib/device_list.dart · 2m14s · 7 tools · 12k tok
-implementation · builder · cursor/claude-sonnet-5 — completed (10m12s, 7 tool calls, 2 files written, 13k tokens)
+⠹ implementation · builder · cursor/composer-2.5 — writing lib/device_list.dart · 2m14s · 7 tools · 12k tok
+implementation · builder · cursor/composer-2.5 — completed (10m12s, 7 tool calls, 2 files written, 13k tokens)
 ```
 
 `kcia wave run` closes with the total (`All waves completed in 14m35s.`), and `kcia task show`
