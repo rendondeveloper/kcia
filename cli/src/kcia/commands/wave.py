@@ -10,6 +10,7 @@ import typer
 
 from kcia.config import resolve_agents
 from kcia.paths import find_repo_root
+from kcia.usage import format_tokens
 from kcia.waves.definitions import get_wave, load_waves
 from kcia.waves.runner import next_pending_wave, run_wave, run_waves_until
 from kcia.waves.session import Session, runs_dir
@@ -37,13 +38,23 @@ def wave_list() -> None:
         raise typer.Exit(code=1)
 
     agents = resolve_agents(repo)
+    total = 0
     for wave in load_waves():
         status = session.wave_status(wave.id)
         agent = agents[wave.agent]
-        typer.echo(
+        state = session.waves.get(wave.id, {})
+        tokens = state.get("tokens") or 0
+        total += tokens
+        line = (
             f"{wave.order}. {wave.id}\t{status}\t{wave.agent} "
             f"({agent.provider}/{agent.model})"
         )
+        if tokens:
+            line += f"\t{format_tokens(tokens)} tokens"
+        typer.echo(line)
+
+    if total:
+        typer.echo(f"\ntotal: {format_tokens(total)} tokens")
 
 
 @app.command("run")

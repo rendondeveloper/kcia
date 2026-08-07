@@ -47,6 +47,10 @@ class RunResult:
     stderr_text: str = ""
     exit_code: int = 0
     tokens_used: int | None = None
+    # Kept separate as well: input, output, and cached tokens are not interchangeable.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
     tool_calls: int = 0
     files_read: tuple[str, ...] = field(default_factory=tuple)
     files_written: tuple[str, ...] = field(default_factory=tuple)

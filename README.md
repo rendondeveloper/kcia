@@ -392,6 +392,34 @@ re-run.
 | `.ai/context/*.md` | the artifacts the waves produced |
 | `.ai/generated/profiles/` | the guidance that was in play, with each piece attributed |
 
+### Token usage
+
+Token counts come from the provider's own `UsageUpdate` events and are accumulated per
+wave — including across validation retries, which invoke the provider more than once.
+
+```
+$ kcia wave list
+1. understanding	completed	planner (claude/claude-opus-5)	18.4k tokens
+2. analysis	completed	planner (claude/claude-opus-5)	22.0k tokens
+3. documentation-init	pending	planner (claude/claude-opus-5)
+
+total: 40.4k tokens
+
+$ kcia task show
+tokens: 40.4k
+  input:  36.0k
+  output: 4.0k
+  cached: 20.0k (read from cache)
+tool calls: 43
+provider calls: 2
+```
+
+kcia does **not** report cost, and cannot report how much of your subscription quota is
+left. Neither `claude` nor `cursor-agent` exposes quota or usage limits in a scriptable
+way — Claude Code shows it only inside the interactive TUI, and `cursor-agent about`
+reports the subscription tier but no consumption. Token counts are the honest ceiling of
+what kcia can tell you from headless invocations.
+
 ### Known gaps
 
 Being honest about what the code does not yet do:

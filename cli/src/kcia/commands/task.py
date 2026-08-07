@@ -8,6 +8,7 @@ from typing import Optional
 import typer
 
 from kcia.paths import find_repo_root
+from kcia.usage import collect_usage, format_tokens
 from kcia.waves.session import Session, classify_input, load_manifest_raw
 
 app = typer.Typer(help="Manage tasks and work items.", no_args_is_help=True)
@@ -58,6 +59,20 @@ def task_show(
     typer.echo(f"id: {task['id']}")
     typer.echo(f"mode: {task['mode']}")
     typer.echo(f"title: {task['title']}")
+
+    usage = collect_usage(session.waves)
+    if usage.total:
+        typer.echo("")
+        typer.echo(f"tokens: {format_tokens(usage.total)}")
+        typer.echo(f"  input:  {format_tokens(usage.input_tokens)}")
+        typer.echo(f"  output: {format_tokens(usage.output_tokens)}")
+        if usage.cached_tokens:
+            typer.echo(f"  cached: {format_tokens(usage.cached_tokens)} (read from cache)")
+        typer.echo(f"tool calls: {usage.tool_calls}")
+        typer.echo(f"provider calls: {usage.provider_calls}")
+        typer.echo("")
+        for wave_id, tokens in usage.per_wave.items():
+            typer.echo(f"  {wave_id}\t{format_tokens(tokens)}")
 
 
 @app.command("inject")

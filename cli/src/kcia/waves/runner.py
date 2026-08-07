@@ -30,6 +30,28 @@ class WaveResult:
 ProviderRunner = Callable[..., object]
 
 
+@dataclass
+class _Usage:
+    """Token and tool-call totals across every provider call made by one wave."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+    tool_calls: int = 0
+    calls: int = 0
+
+    def add(self, result: object) -> None:
+        self.input_tokens += int(getattr(result, "input_tokens", 0) or 0)
+        self.output_tokens += int(getattr(result, "output_tokens", 0) or 0)
+        self.cached_tokens += int(getattr(result, "cached_tokens", 0) or 0)
+        self.tool_calls += int(getattr(result, "tool_calls", 0) or 0)
+        self.calls += 1
+
+    @property
+    def total(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
 def next_pending_wave(session: Session) -> WaveDefinition | None:
     for wave in load_waves():
         if session.wave_status(wave.id) == "pending":
@@ -104,6 +126,10 @@ def run_wave(
 
         runner = provider_runner or run_provider
         result = runner(adapter, req)  # type: ignore[operator]
+        # A wave can invoke the provider several times (validation retries); the token
+        # counts reported are the total for the wave, not just the last attempt.
+        usage = _Usage()
+        usage.add(result)
 
         output_path = _write_wave_outputs(wave, session, result.output_text)  # type: ignore[attr-defined]
 
@@ -147,6 +173,7 @@ def run_wave(
                     cwd=session.repo_root,
                 )
                 result = runner(adapter, req)  # type: ignore[operator]
+                usage.add(result)
                 _write_wave_outputs(wave, session, result.output_text)  # type: ignore[attr-defined]
                 plan = build_validation_plan(
                     session,
@@ -170,8 +197,12 @@ def run_wave(
             },
             output_path=str(output_path) if output_path else None,
             prompt_path=str(prompt_path),
-            tokens=getattr(result, "tokens_used", None),
-            tool_calls=getattr(result, "tool_calls", 0),
+            tokens=usage.total or None,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_tokens=usage.cached_tokens,
+            tool_calls=usage.tool_calls,
+            provider_calls=usage.calls,
         )
         session.save()
         return WaveResult(
