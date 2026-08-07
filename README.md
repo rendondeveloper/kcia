@@ -297,13 +297,29 @@ sent is written to `.ai/local/runs/<wave>-NN.prompt.md` on every run, including 
    `output-validation.md`, plus `reasoning-limits.md` on the `implementation` wave only
 3. **Project context** — `.ai/context/project.md`
 4. **Profile bundles** — for each active profile: its references (parent-first through the
-   inheritance chain), then its boolean rules
-5. **Task context** — `.ai/context/task.md`, plus `ticket.md` in ticket mode
-6. **Previous wave output** — `plan.md`, on `implementation` and `documentation-final`
-7. **Validation error** — on a retry, the failing command's actual output
-8. **Injections** — anything added with `kcia task inject "<text>"`
-9. **Wave instruction** — rendered from `control-plane/waves/prompts/<wave>.md.j2`
-10. **Output format**
+   inheritance chain), then its boolean rules. References are filtered per wave via
+   `reference_tags` in `waves.yaml`; a reference tagged `coding` is injected only in waves
+   that request that tag. When the composed prompt exceeds the context budget, lower-priority
+   tags are dropped whole-file in `drop_order` and a `## Context budget` footer lists what
+   was omitted.
+5. **Repository map** — a precomputed table of packages, profiles, and test/lint commands
+   (from `manifest.yaml`), inserted after project context
+6. **Task context** — `.ai/context/task.md`, plus `ticket.md` in ticket mode
+7. **Previous wave output** — `plan.md`, on `implementation` and `documentation-final`
+8. **Validation error** — on a retry, the failing command's actual output
+9. **Injections** — anything added with `kcia task inject "<text>"`
+10. **Wave instruction** — rendered from `control-plane/waves/prompts/<wave>.md.j2`
+11. **Output format**
+
+`kcia task init` accepts repeatable `--scope <path>` to limit which manifest roots drive
+profile resolution (for example `--scope packages/api`).
+
+Measured on `tests/fixtures/repos/melos_mono` with one active profile (`backend-dart`):
+
+| Metric | Before | After |
+|---|---|---|
+| Tokens per task (5 waves) | ~14 834 | ~12 655 (~15% lower) |
+| `understanding` wave | ~2 958 | ~2 482 (~16% lower) |
 
 Guardrails are plain Markdown files in the control plane, read and inlined at composition
 time. Editing one changes agent behavior on the next run with no code change and no
@@ -427,8 +443,6 @@ Being honest about what the code does not yet do:
 - **`edit_scope` is not enforced.** Waves declare it (`documentation-init` is meant to be
   confined to `.ai/**`), but the runner does not translate it into a tool restriction — a
   wave with `allow_edits: true` currently gets full write access.
-- **No context budget.** The plan calls for truncating low-priority references past a token
-  threshold; prompts are currently assembled in full.
 - **Workflow files are not injected** into prompts yet, only references and rules.
 - **Sessions are not resumed** across waves — every wave is a fresh invocation, and the
   handoff happens through files.
