@@ -261,9 +261,42 @@ kcia wave run understanding
 kcia wave run --until analysis
 kcia wave run --quiet            # no live progress line (CI, logs)
 
-# 5. Inspect progress and token usage.
+# 5. Review the plan, then let the build run.
+kcia wave approve
+
+# 6. Inspect progress and token usage.
 kcia task show
 kcia wave logs understanding
+```
+
+### The approval gate
+
+The three planning waves run unattended, but `kcia wave run` **stops before
+`implementation`** — the first wave allowed to touch code outside `.ai/`. It prints the plan
+and waits:
+
+```
+Paused before `implementation` — the first wave that can change your code.
+Review the plan above, then:
+  kcia wave approve            approve and continue
+  kcia task inject "..."       add context, then re-run the planning wave
+  kcia task abort              stop here
+```
+
+`kcia wave approve` records the decision **and continues the run** — one command, not two.
+Use `--no-run` to only record it, `--note` to attach a reason, and `kcia wave plan` to
+reprint the plan at any time. The paused run exits with code `2`, distinct from a real
+failure (`1`), so scripts can tell "waiting for a human" from "broken".
+
+For unattended runs, `kcia wave run --yes` skips the gate.
+
+The gate is declarative, not hardcoded. It comes from `requires_approval` in
+`control-plane/waves/waves.yaml`, so moving it — or adding a second one — is a data edit:
+
+```yaml
+  - id: implementation
+    requires_approval: true
+    approval_shows: plan.md
 ```
 
 While a wave runs, a live status line reports which agent is working, on which provider and

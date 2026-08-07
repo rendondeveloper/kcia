@@ -14,7 +14,13 @@ from kcia.paths import find_repo_root
 from kcia.usage import format_duration, format_tokens
 from kcia.waves.definitions import get_wave, load_waves
 from kcia.waves.progress import WaveProgress
-from kcia.waves.runner import next_pending_wave, run_wave, run_waves_until
+from kcia.waves.runner import (
+    ApprovalRequired,
+    approval_document,
+    next_pending_wave,
+    run_wave,
+    run_waves_until,
+)
 from kcia.waves.session import Session, runs_dir
 
 app = typer.Typer(help="Run and inspect pipeline waves.", no_args_is_help=True)
@@ -53,10 +59,34 @@ def wave_list() -> None:
         )
         if tokens:
             line += f"\t{format_tokens(tokens)} tokens"
+        if wave.requires_approval and status != "completed":
+            line += "\t[approved]" if session.is_approved(wave.id) else "\t[needs approval]"
         typer.echo(line)
 
     if total:
         typer.echo(f"\ntotal: {format_tokens(total)} tokens")
+
+
+def _render_approval_gate(gate: ApprovalRequired) -> None:
+    """Show the plan and tell the user how to proceed."""
+    typer.echo("")
+    if gate.document is not None:
+        typer.echo(gate.document.read_text(encoding="utf-8").rstrip())
+        typer.echo("")
+        typer.echo(f"(from {gate.document})")
+    else:
+        typer.echo(
+            f"warning: no `{gate.wave.approval_shows}` was produced, "
+            "so there is no plan to review."
+        )
+    typer.echo("")
+    typer.echo(
+        f"Paused before `{gate.wave.id}` — the first wave that can change your code."
+    )
+    typer.echo("Review the plan above, then:")
+    typer.echo("  kcia wave approve            approve and continue")
+    typer.echo("  kcia task inject \"...\"       add context, then re-run the planning wave")
+    typer.echo("  kcia task abort              stop here")
 
 
 class _ProgressReporter:
@@ -94,7 +124,18 @@ def wave_run(
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress the live progress line."
     ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip the approval gate before waves that change code.",
+    ),
 ) -> None:
+    session = _load_runnable_session()
+    _execute(session, wave_id=wave_id, until=until, force=force, quiet=quiet, yes=yes)
+
+
+def _load_runnable_session() -> Session:
     global _cancel_requested
     _cancel_requested = False
     signal.signal(signal.SIGINT, _handle_sigint)
@@ -115,7 +156,18 @@ def wave_run(
             f"Another wave is running (pid {lock.get('pid')}, acquired {lock.get('acquired_at')})."
         )
         raise typer.Exit(code=1)
+    return session
 
+
+def _execute(
+    session: Session,
+    *,
+    wave_id: Optional[str],
+    until: Optional[str],
+    force: bool,
+    quiet: bool,
+    yes: bool,
+) -> None:
     reporter = _ProgressReporter(enabled=not quiet)
     run_started = time.monotonic()
 
@@ -123,13 +175,19 @@ def wave_run(
         if _cancel_requested:
             typer.echo("Cancelled.")
             raise typer.Exit(code=130)
-        result = run_wave(
-            wave_id,
-            session,
-            force=force,
-            on_event=reporter.handle,
-            on_wave_start=reporter.start,
-        )
+        try:
+            result = run_wave(
+                wave_id,
+                session,
+                force=force,
+                on_event=reporter.handle,
+                on_wave_start=reporter.start,
+                skip_approval=yes,
+            )
+        except ApprovalRequired as gate:
+            reporter.finish()
+            _render_approval_gate(gate)
+            raise typer.Exit(code=2) from gate
         reporter.finish(failed=result.status != "completed")
         if result.status == "completed":
             if result.output_path:
@@ -154,19 +212,80 @@ def wave_run(
             typer.echo(f"All waves completed in {format_duration(time.monotonic() - run_started)}.")
             return
 
-        result = run_wave(
-            pending.id,
-            session,
-            force=force,
-            on_event=reporter.handle,
-            on_wave_start=reporter.start,
-        )
+        try:
+            result = run_wave(
+                pending.id,
+                session,
+                force=force,
+                on_event=reporter.handle,
+                on_wave_start=reporter.start,
+                skip_approval=yes,
+            )
+        except ApprovalRequired as gate:
+            reporter.finish()
+            _render_approval_gate(gate)
+            raise typer.Exit(code=2) from gate
         reporter.finish(failed=result.status != "completed")
         if result.status != "completed":
             typer.echo(f"Wave `{pending.id}` failed: {result.error}")
             raise typer.Exit(code=1)
         if target and pending.id == target:
             return
+
+
+@app.command("approve")
+def wave_approve(
+    note: Optional[str] = typer.Option(None, "--note", help="Reason recorded with the approval."),
+    no_run: bool = typer.Option(
+        False, "--no-run", help="Record the approval without continuing the run."
+    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress the live progress line."),
+) -> None:
+    """Approve the paused wave and continue running."""
+    session = _load_runnable_session()
+
+    gated = next(
+        (
+            wave
+            for wave in load_waves()
+            if wave.requires_approval
+            and session.wave_status(wave.id) != "completed"
+            and not session.is_approved(wave.id)
+        ),
+        None,
+    )
+    if gated is None:
+        typer.echo("Nothing is waiting for approval.")
+        raise typer.Exit(code=1)
+
+    session.approve(gated.id, note=note)
+    typer.echo(f"Approved `{gated.id}`.")
+    if no_run:
+        typer.echo("Run `kcia wave run` to continue.")
+        return
+
+    _execute(session, wave_id=None, until=None, force=False, quiet=quiet, yes=False)
+
+
+@app.command("plan")
+def wave_plan() -> None:
+    """Print the plan awaiting approval."""
+    repo = find_repo_root()
+    if repo is None:
+        typer.echo("No git repository found.")
+        raise typer.Exit(code=1)
+    session = Session.load(repo)
+    for wave in load_waves():
+        if not wave.requires_approval:
+            continue
+        document = approval_document(session, wave)
+        if document is None:
+            typer.echo(f"No `{wave.approval_shows}` yet. Run the planning waves first.")
+            raise typer.Exit(code=1)
+        typer.echo(document.read_text(encoding="utf-8").rstrip())
+        return
+    typer.echo("No wave declares an approval document.")
+    raise typer.Exit(code=1)
 
 
 @app.command("retry")

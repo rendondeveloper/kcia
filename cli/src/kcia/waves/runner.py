@@ -16,7 +16,7 @@ from kcia.providers.registry import get_adapter
 from kcia.providers.runner import run_provider
 from kcia.waves.definitions import WaveDefinition, get_wave, load_waves
 from kcia.waves.prompts import build_prompt, build_prompt_with_stats
-from kcia.waves.session import Session, load_manifest, runs_dir
+from kcia.waves.session import Session, context_dir, load_manifest, runs_dir
 from kcia.waves.validation import build_validation_plan, run_validation
 
 
@@ -30,6 +30,19 @@ class WaveResult:
 
 
 ProviderRunner = Callable[..., object]
+
+
+class ApprovalRequired(Exception):
+    """Raised instead of running a wave that a human has not approved yet.
+
+    Not a failure: the wave stays pending so `kcia wave run` resumes it once
+    `kcia wave approve` records the decision.
+    """
+
+    def __init__(self, wave: WaveDefinition, document: Path | None) -> None:
+        self.wave = wave
+        self.document = document
+        super().__init__(f"wave '{wave.id}' requires approval")
 
 
 @dataclass
@@ -75,6 +88,20 @@ def check_requires(session: Session, wave: WaveDefinition, *, force: bool = Fals
         )
 
 
+def approval_document(session: Session, wave: WaveDefinition) -> Path | None:
+    """The artifact a human reviews before approving this wave, if it exists."""
+    if not wave.approval_shows:
+        return None
+    path = context_dir(session.repo_root) / wave.approval_shows
+    return path if path.is_file() else None
+
+
+def require_approval(session: Session, wave: WaveDefinition, *, skip: bool = False) -> None:
+    if skip or not wave.requires_approval or session.is_approved(wave.id):
+        return
+    raise ApprovalRequired(wave, approval_document(session, wave))
+
+
 def run_wave(
     wave_id: str,
     session: Session,
@@ -84,9 +111,11 @@ def run_wave(
     provider_runner: ProviderRunner | None = None,
     on_event: Callable[[StreamEvent], None] | None = None,
     on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None = None,
+    skip_approval: bool = False,
 ) -> WaveResult:
     wave = get_wave(wave_id)
     check_requires(session, wave, force=force)
+    require_approval(session, wave, skip=skip_approval)
     session.clear_stale_lock()
     session.acquire_lock()
 
@@ -248,6 +277,7 @@ def run_waves_until(
     provider_runner: ProviderRunner | None = None,
     on_event: Callable[[StreamEvent], None] | None = None,
     on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None = None,
+    skip_approval: bool = False,
 ) -> list[WaveResult]:
     results: list[WaveResult] = []
     for wave in load_waves():
@@ -262,6 +292,7 @@ def run_waves_until(
             provider_runner=provider_runner,
             on_event=on_event,
             on_wave_start=on_wave_start,
+            skip_approval=skip_approval,
         )
         results.append(result)
         if result.status != "completed":

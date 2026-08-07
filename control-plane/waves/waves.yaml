@@ -41,6 +41,11 @@ waves:
     edit_scope: ["**"]
     requires: [analysis]
     validation: required
+    # Primera wave que puede tocar código fuera de `.ai/`: el plan debe quedar
+    # aprobado por una persona antes de continuar.
+    requires_approval: true
+    approval_shows: plan.md
+    description: "Implementar el plan aprobado y validar."
     reference_tags: [coding, testing, validation, api, data, web, accessibility]
     prompt_template: implementation.md.j2
 

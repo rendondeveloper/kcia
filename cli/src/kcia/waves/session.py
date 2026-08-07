@@ -219,6 +219,20 @@ class Session:
             return False
         return True
 
+    def is_approved(self, wave_id: str) -> bool:
+        return bool(self.data.get("approvals", {}).get(wave_id))
+
+    def approve(self, wave_id: str, *, note: str | None = None) -> None:
+        record: dict[str, Any] = {"approved_at": _now_iso()}
+        if note:
+            record["note"] = note
+        self.data.setdefault("approvals", {})[wave_id] = record
+        self.save()
+
+    def revoke_approval(self, wave_id: str) -> None:
+        self.data.get("approvals", {}).pop(wave_id, None)
+        self.save()
+
     def add_injection(self, text: str) -> None:
         self.data.setdefault("injections", []).append(text)
         self.save()
