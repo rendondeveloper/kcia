@@ -21,11 +21,7 @@ from kcia.render import render_template
 # so none of it belongs in the project's history.
 GITIGNORE_MARKER = "# kcia — generated, do not commit"
 GITIGNORE_ENTRIES = (
-    # `.ai/*` rather than `.ai/`, so the negation below can still apply: git does not
-    # descend into an excluded directory.
-    ".ai/*",
-    # Hand-written repo-local profiles are source, not output — keep them tracked.
-    "!.ai/profiles/",
+    ".ai/",
     "CLAUDE.md",
     "AGENTS.md",
     ".cursor/rules/",

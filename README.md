@@ -139,13 +139,12 @@ Publishing a new version (maintainers only): [RELEASING.md](RELEASING.md).
 | Installed profile packs | `~/.local/share/kcia/packs/` | no |
 | Per-repo state | `<your project>/.ai/` | partly — see below |
 
-Inside a project you work on, everything kcia generates is **regenerable output and is
-not committed**. `kcia init` adds it to that project's `.gitignore` for you:
+Inside a project you work on, **nothing kcia writes is committed**. `kcia init` adds it
+all to that project's `.gitignore` for you:
 
 ```gitignore
 # kcia — generated, do not commit
-.ai/*
-!.ai/profiles/
+.ai/
 CLAUDE.md
 AGENTS.md
 .cursor/rules/
@@ -154,9 +153,9 @@ AGENTS.md
 So a teammate cloning your project sees no kcia files at all; they run `kcia init` once
 and get their own. Nothing to configure, nothing to keep in sync by hand.
 
-The single exception is `.ai/profiles/` — profiles you write for that repo are *source*,
-not output, so they stay tracked and travel with the project. That is what the `!` line
-is for.
+This includes `.ai/profiles/`. Profiles you write there are local to your working copy
+and do not travel with the project — to share a profile with your team, publish it as a
+profile pack and install it with `kcia profile add`.
 
 Nothing from kcia's own dependency tree is installed into your project, and your project
 needs no Python.
