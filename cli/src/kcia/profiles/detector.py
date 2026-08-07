@@ -23,6 +23,9 @@ EXCLUDED_DIRS = {
     "target",
     ".gradle",
     "Pods",
+    ".symlinks",
+    ".plugin_symlinks",
+    ".pub-cache",
     ".idea",
     ".vscode",
     ".ai",
@@ -70,6 +73,10 @@ def find_candidate_dirs(repo_root: Path, *, extra_exclude: list[str] | None = No
     seen: set[Path] = set()
     for candidate in candidates:
         resolved = candidate.resolve()
+        # Symlinked dirs (e.g. Flutter's ios/.symlinks -> ~/.pub-cache) can resolve
+        # outside the repository; those are never part of the repo itself.
+        if resolved != repo_root and not resolved.is_relative_to(repo_root):
+            continue
         if resolved not in seen:
             seen.add(resolved)
             deduped.append(resolved)
@@ -160,7 +167,7 @@ def _walk_candidate_dirs(repo_root: Path, excluded: set[str], depth: int = 0, ma
         return []
     results: list[Path] = []
     for child in sorted(repo_root.iterdir()):
-        if not child.is_dir() or child.name in excluded:
+        if child.is_symlink() or not child.is_dir() or child.name in excluded:
             continue
         if _looks_like_project_root(child):
             results.append(child)

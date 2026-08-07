@@ -47,45 +47,37 @@ You install kcia **once** on your machine. Each project only gets a `.ai/` direc
 
 ## Install
 
-kcia is installed **from a git clone**, not with `pipx` — the CLI needs `control-plane/` on
-disk next to `cli/` (see [Why not `pipx install`](#why-not-pipx-install)).
-
-### Step 1 — Clone
+One line:
 
 ```bash
-git clone https://github.com/rendondeveloper/kcia.git ~/tools/kcia
-cd ~/tools/kcia
+curl -fsSL https://raw.githubusercontent.com/rendondeveloper/kcia/master/scripts/install.sh | bash
 ```
 
-Keep this directory. It is your distribution copy, not a disposable checkout.
+That clones kcia to `~/tools/kcia`, builds its virtualenv, installs the CLI, and links a
+`kcia` shim into `~/.local/bin`. kcia is installed **from a git clone**, not with `pipx` —
+the CLI needs `control-plane/` on disk next to `cli/` (see
+[Why not `pipx install`](#why-not-pipx-install)). Keep `~/tools/kcia`: it is your
+distribution copy, not a disposable checkout.
 
-### Step 2 — Virtualenv and editable install
+Override the defaults with environment variables if you want it elsewhere:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -e "./cli[dev]"
+KCIA_HOME=~/src/kcia KCIA_BIN=~/bin curl -fsSL .../install.sh | bash
 ```
 
-### Step 3 — Add to PATH
-
-```bash
-echo 'export PATH="$HOME/tools/kcia/.venv/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-On bash, append the same line to `~/.bashrc` instead.
-
-### Step 4 — Verify
+### Verify
 
 ```bash
 kcia --version        # e.g. kcia 0.1.0
 kcia profile list     # backend-dart, mobile-flutter, web-flutter
 ```
 
-If `profile list` is empty, the CLI cannot find `control-plane/`. You are probably running
-a broken install outside the clone — repeat steps 2–3 from inside `~/tools/kcia`.
+If `profile list` is empty, the CLI cannot find `control-plane/` — you are running a
+`kcia` from somewhere else. Check `which kcia`; it should point at `~/.local/bin/kcia`.
+If `~/.local/bin` was not already on your `PATH`, the installer appends it to your shell
+rc and tells you to `source` it.
 
-### Step 5 — Configure agents (once)
+### Configure agents (once)
 
 ```bash
 kcia agent set planner claude --model claude-opus-5
@@ -114,24 +106,21 @@ projects you work on.
 
 ### Routine update
 
+Same one line as the install:
+
 ```bash
-cd ~/tools/kcia
-
-# 1. Take master exactly as published (discards local changes in the clone).
-git fetch origin
-git reset --hard origin/master
-git clean -fd
-
-# 2. Reinstall so the venv picks up new code.
-.venv/bin/pip install -e "./cli[dev]" --force-reinstall --no-deps
-
-# 3. Confirm.
-kcia --version
-kcia profile list
+~/tools/kcia/scripts/install.sh update
 ```
 
-`git reset --hard` is intentional: the clone is a distribution copy, not a place to edit.
-Your own projects are untouched.
+Or, if the clone is gone or broken, from the network again:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rendondeveloper/kcia/master/scripts/install.sh | bash -s update
+```
+
+The updater does a `git reset --hard origin/master` in the clone. That is intentional: the
+clone is a distribution copy, not a place to edit — local changes there are discarded. Your
+own projects are untouched.
 
 ### After updating — refresh your projects
 
@@ -160,13 +149,11 @@ kcia profile detect
 Rebuild the kcia environment from scratch:
 
 ```bash
-cd ~/tools/kcia
-find . -name __pycache__ -type d -prune -exec rm -rf {} +
-rm -rf .venv
-python3 -m venv .venv
-.venv/bin/pip install -e "./cli[dev]"
-kcia --version
+rm -rf ~/tools/kcia/.venv
+~/tools/kcia/scripts/install.sh update
 ```
+
+The installer rebuilds the virtualenv when it is missing.
 
 In a project where generated output looks stale:
 
@@ -181,11 +168,12 @@ Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours.
 ### Uninstall
 
 ```bash
-rm -rf ~/tools/kcia                  # the clone and its venv
-rm -rf ~/.config/kcia                # agent preferences
-rm -rf ~/.local/share/kcia           # installed profile packs
-# then remove the PATH line from ~/.zshrc
+~/tools/kcia/scripts/install.sh uninstall
 ```
+
+That removes the clone and its venv, the `kcia` shim, `~/.config/kcia` (agent preferences),
+`~/.local/share/kcia` (installed profile packs), and the `PATH` line it added. The `.ai/`
+directories in your projects are left alone.
 
 Publishing a new version (maintainers only): [RELEASING.md](RELEASING.md).
 
