@@ -345,10 +345,76 @@ kcia mcp list --role builder     # what one role can actually see
 kcia mcp remove atlassian
 ```
 
-`kcia mcp add` prints the login command for that server. For Atlassian that is
-`claude mcp add --transport sse atlassian <url>` (OAuth in the browser) and
-`cursor-agent mcp login atlassian`. The remote Atlassian server is **Cloud only** —
-Server and Data Center are not supported.
+`kcia mcp add` prints the login command for that server.
+
+### Adding Jira, end to end
+
+Requires **Atlassian Cloud** (`*.atlassian.net`). The official remote MCP server does not
+support Server or Data Center; for those you would need a third-party MCP with an API token.
+
+```bash
+# 1. Enable it for this repository.
+cd /path/to/your/project
+kcia mcp add atlassian
+
+# 2. Log in — kcia stores no credentials, the provider CLI owns the session.
+claude mcp add --transport sse atlassian https://mcp.atlassian.com/v1/sse
+cursor-agent mcp login atlassian          # only if a role runs on Cursor
+
+# 3. Verify the server answers before relying on it.
+claude mcp list
+cursor-agent mcp list-tools atlassian
+
+# 4. Confirm what each role will see.
+kcia mcp list --role planner              # atlassian
+kcia mcp list --role builder              # hidden from builder
+```
+
+Step 3 matters: the Atlassian remote server is still evolving and its URL has changed
+before. If `claude mcp list` does not show it as connected, check Atlassian's current
+documentation and update `url` in `control-plane/mcp/catalog.yaml` — it is a one-line data
+edit, not a code change.
+
+#### Working from a ticket instead of a prompt
+
+`kcia task init PROJ-123` can start a task from an issue key, but that mode is **off by
+default**. Turn it on by editing `.ai/manifest.yaml`:
+
+```yaml
+integrations:
+  jira:
+    enabled: true
+    base_url: https://your-site.atlassian.net
+    project_keys: [PROJ, INFRA]
+```
+
+Those edits survive `kcia init` — the manifest keeps whatever `integrations` block it
+already had. With it enabled, an argument matching a declared project key is classified as
+a ticket rather than a free-form prompt, and the task statement records the key.
+
+Be aware of what kcia does **not** do here: nothing fetches the issue body. The prompt reads
+`.ai/context/ticket.md`, and no wave writes it. So the ticket text reaches the model in one
+of two ways — the planner fetches it itself through the Atlassian MCP (which is why the
+server is planner-scoped), or you paste it into `ticket.md` by hand. Without either, the
+agent only receives the key.
+
+#### What the agent may do with Jira
+
+The guardrails shipped in `control-plane/guardrails/policies.yaml` allow reading issues and
+comments, and forbid commenting and transitioning:
+
+```yaml
+jira:
+  allow_read: true
+  allow_read_comments: true
+  allow_comment: false
+  allow_transition: false
+```
+
+Those are instructions in the prompt, not enforced tool restrictions — if the MCP server
+exposes a write tool and the model is authenticated, nothing at the CLI level blocks the
+call. Treat them as policy, and keep the Atlassian account's own permissions as the real
+boundary.
 
 ### Per-role gating, and where it is real
 
