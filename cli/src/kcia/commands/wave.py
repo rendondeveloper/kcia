@@ -17,6 +17,7 @@ from kcia.waves.progress import WaveProgress
 from kcia.waves.runner import (
     ApprovalRequired,
     approval_document,
+    WaveBlocked,
     check_agents_ready,
     next_pending_wave,
     run_wave,
@@ -66,6 +67,20 @@ def wave_list() -> None:
 
     if total:
         typer.echo(f"\ntotal: {format_tokens(total)} tokens")
+
+
+def _render_blocked(blocked: WaveBlocked) -> None:
+    """A wave asked a question; show it and how to answer."""
+    typer.echo("")
+    typer.echo(f"Stopped at `{blocked.wave.id}` — the agent cannot proceed.")
+    typer.echo("")
+    typer.echo(f"  {blocked.reason}")
+    typer.echo("")
+    if blocked.output_path:
+        typer.echo(f"Full response: {blocked.output_path}")
+    typer.echo("Answer it, then resume:")
+    typer.echo("  kcia task inject \"<your answer>\"")
+    typer.echo(f"  kcia wave retry {blocked.wave.id}")
 
 
 def _render_approval_gate(gate: ApprovalRequired) -> None:
@@ -174,6 +189,20 @@ def _execute(
     quiet: bool,
     yes: bool,
 ) -> None:
+    # A blocked wave is not `pending`, so the loop below would otherwise skip
+    # straight past it into the wave that depends on the missing answer.
+    stalled = next(
+        (wave for wave in load_waves() if session.wave_status(wave.id) == "blocked"), None
+    )
+    if stalled is not None:
+        state = session.waves.get(stalled.id, {})
+        typer.echo(f"`{stalled.id}` is waiting for an answer:")
+        typer.echo(f"  {state.get('blocked_reason', 'reason not recorded')}")
+        typer.echo("Answer it, then resume:")
+        typer.echo('  kcia task inject "<your answer>"')
+        typer.echo(f"  kcia wave retry {stalled.id}")
+        raise typer.Exit(code=2)
+
     problems = check_agents_ready(session.repo_root)
     if problems:
         typer.echo("Cannot start — the configured agents are not ready:")
@@ -202,6 +231,10 @@ def _execute(
             reporter.finish()
             _render_approval_gate(gate)
             raise typer.Exit(code=2) from gate
+        except WaveBlocked as blocked:
+            reporter.finish()
+            _render_blocked(blocked)
+            raise typer.Exit(code=2) from blocked
         reporter.finish(failed=result.status != "completed")
         if result.status == "completed":
             if result.output_path:
@@ -239,6 +272,10 @@ def _execute(
             reporter.finish()
             _render_approval_gate(gate)
             raise typer.Exit(code=2) from gate
+        except WaveBlocked as blocked:
+            reporter.finish()
+            _render_blocked(blocked)
+            raise typer.Exit(code=2) from blocked
         reporter.finish(failed=result.status != "completed")
         if result.status != "completed":
             typer.echo(f"Wave `{pending.id}` failed: {result.error}")

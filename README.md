@@ -169,6 +169,37 @@ kcia task show
 kcia wave logs understanding
 ```
 
+### When the agent is blocked
+
+Every wave prompt carries a protocol: if continuing would mean guessing, the agent replies
+with one line, `BLOCKED: <question>`, and nothing else. The run stops there:
+
+```
+Stopped at `understanding` — the agent cannot proceed.
+
+  What is the change request?
+
+Full response: .ai/local/runs/understanding-01.blocked.md
+Answer it, then resume:
+  kcia task inject "<your answer>"
+  kcia wave retry understanding
+```
+
+This exists because the alternative is worse than a crash. Without it a planner that says
+"I don't have a task to plan yet" is recorded as **completed**, and the remaining four waves
+reason on top of the same gap — a measured run burned 12.7k tokens and 14 minutes that way
+and touched two unrelated files.
+
+A blocked wave is not a failure: its status is `blocked`, no `error` is recorded, and the
+work is kept. The response is written to `.ai/local/runs/` and deliberately **not** to the
+wave's context file — a question is not the artifact the wave produces, and putting
+`BLOCKED: …` into `task.md` would feed the gap to every later wave. `kcia wave run` refuses
+to move on while a wave is blocked, rather than skipping to the next pending one.
+
+Detection is intentionally narrow, since a false positive halts a healthy run: the protocol
+marker, plus two shapes agents produced before the protocol existed. Mentioning an open
+question, or the word `UNKNOWN` in passing, does not trigger it.
+
 ### The approval gate
 
 The three planning waves run unattended, but `kcia wave run` **stops before

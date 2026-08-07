@@ -153,6 +153,7 @@ def build_prompt_with_stats(
         can_ask_questions=wave.can_ask_questions,
         validation_error=validation_error,
     )
+    add_section("blocked-protocol", render_template(prompts_dir(), "_blocked.md.j2"))
     add_section("wave-instruction", wave_instruction)
 
     output_format = "\n## Output format\nRespond in Markdown.\n"

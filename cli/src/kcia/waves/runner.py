@@ -14,6 +14,7 @@ from kcia.providers.catalog import load_catalog
 from kcia.providers.events import StreamEvent
 from kcia.providers.registry import get_adapter
 from kcia.providers.runner import run_provider
+from kcia.waves.blocked import detect_blocked
 from kcia.waves.definitions import WaveDefinition, get_wave, load_waves
 from kcia.waves.prompts import build_prompt, build_prompt_with_stats
 from kcia.waves.session import Session, context_dir, load_manifest, runs_dir
@@ -30,6 +31,20 @@ class WaveResult:
 
 
 ProviderRunner = Callable[..., object]
+
+
+class WaveBlocked(Exception):
+    """Raised when a wave reports it cannot proceed without an answer.
+
+    Distinct from a failure: the work done so far is kept, and the wave is
+    resumed with `kcia task inject` followed by `kcia wave retry`.
+    """
+
+    def __init__(self, wave: WaveDefinition, reason: str, output_path: Path | None) -> None:
+        self.wave = wave
+        self.reason = reason
+        self.output_path = output_path
+        super().__init__(f"wave '{wave.id}' is blocked: {reason}")
 
 
 class ApprovalRequired(Exception):
@@ -213,6 +228,25 @@ def run_wave(
         usage = _Usage()
         usage.add(result)
 
+        # Checked before writing: a blocked response is a question, not the
+        # artifact this wave produces. Writing it would put "BLOCKED: …" into
+        # task.md or plan.md, which every later wave then reads as context.
+        reason = detect_blocked(result.output_text)  # type: ignore[attr-defined]
+        if reason:
+            session.set_wave_status(
+                wave_id,
+                "blocked",
+                finished_at=_now_iso(),
+                blocked_reason=reason,
+                prompt_path=str(prompt_path) if prompt_path else None,
+            )
+            session.save()
+            raise WaveBlocked(
+                wave,
+                reason,
+                _write_blocked_response(session, wave_id, attempts, result.output_text),  # type: ignore[attr-defined]
+            )
+
         output_path = _write_wave_outputs(wave, session, result.output_text)  # type: ignore[attr-defined]
 
         if wave.validation == "required":
@@ -293,6 +327,9 @@ def run_wave(
             output_path=str(output_path) if output_path else None,
             prompt_path=str(prompt_path),
         )
+    except WaveBlocked:
+        # Not a failure: the status and reason were already recorded.
+        raise
     except Exception as exc:
         session.set_wave_status(
             wave_id,
@@ -360,6 +397,16 @@ def _invoke(
     if "on_event" not in signature.parameters:
         return runner(adapter, req)
     return runner(adapter, req, on_event=on_event)
+
+
+def _write_blocked_response(
+    session: Session, wave_id: str, attempt: int, output_text: str
+) -> Path:
+    """Keep the full response next to its prompt, out of the context files."""
+    path = runs_dir(session.repo_root) / f"{wave_id}-{attempt:02d}.blocked.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(output_text, encoding="utf-8")
+    return path
 
 
 def _write_prompt_file(session: Session, wave_id: str, attempt: int, prompt: str) -> Path:

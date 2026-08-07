@@ -319,6 +319,11 @@ Layout: monorepo. Detected 4 packages.
 - forbid_business_logic_in_handlers: True
 - require_structured_logging: True
 
+## If you cannot proceed
+
+If continuing would mean guessing, reply with one line — `BLOCKED: <question>` —
+and nothing else. An open question you can work around is not a blocker.
+
 ## Wave: understanding
 
 Understand the problem and bound the scope. Do not edit repository files.
