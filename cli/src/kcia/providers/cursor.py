@@ -120,6 +120,10 @@ class CursorAdapter:
             cmd.append("--stream-partial-output")
         if req.allow_edits:
             cmd.append("--force")
+        if req.mcp_config is not None:
+            # Cursor reads .cursor/mcp.json itself; there is no per-run override,
+            # so all kcia can do is stop the approval prompt from hanging --print.
+            cmd.append("--approve-mcps")
         if req.resume and req.session_id:
             cmd.extend(["--resume", req.session_id])
         return cmd

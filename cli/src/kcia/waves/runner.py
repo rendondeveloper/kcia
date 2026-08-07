@@ -14,6 +14,7 @@ from kcia.providers.catalog import load_catalog
 from kcia.providers.events import StreamEvent
 from kcia.providers.registry import get_adapter
 from kcia.providers.runner import run_provider
+from kcia.mcp.config import CURSOR_CONFIG, render_claude_config, servers_for_role
 from kcia.waves.blocked import detect_blocked
 from kcia.waves.definitions import WaveDefinition, get_wave, load_waves
 from kcia.waves.prompts import build_prompt, build_prompt_with_stats
@@ -204,9 +205,13 @@ def run_wave(
             )
         prompt_path = _write_prompt_file(session, wave_id, attempts, prompt)
 
+        # Rendered per wave, so a role only ever sees the servers it may use.
+        mcp_config = _render_mcp_config(session, wave, agent.provider)
+
         req = RunRequest(
             prompt=prompt,
             model=agent.model,
+            mcp_config=mcp_config,
             allow_edits=wave.allow_edits,
             stream=adapter.capabilities.supports_streaming,
             workspace_dirs=[session.repo_root],
@@ -278,6 +283,7 @@ def run_wave(
                 req = RunRequest(
                     prompt=retry_prompt,
                     model=agent.model,
+                    mcp_config=mcp_config,
                     allow_edits=wave.allow_edits,
                     stream=adapter.capabilities.supports_streaming,
                     workspace_dirs=[session.repo_root],
@@ -397,6 +403,23 @@ def _invoke(
     if "on_event" not in signature.parameters:
         return runner(adapter, req)
     return runner(adapter, req, on_event=on_event)
+
+
+def _render_mcp_config(session: Session, wave: WaveDefinition, provider: str) -> Path | None:
+    """The MCP config this wave's role may use, or None when it has no servers.
+
+    Only Claude Code accepts a per-invocation config, so that is where the role
+    gating is enforced. Cursor reads `.cursor/mcp.json` for the whole repository;
+    the returned path there only signals that servers exist, so the adapter can
+    auto-approve them instead of hanging on a prompt.
+    """
+    entries = servers_for_role(session.repo_root, wave.agent)
+    if not entries:
+        return None
+    if provider != "claude":
+        return session.repo_root / CURSOR_CONFIG
+    destination = runs_dir(session.repo_root) / f"mcp-{wave.agent}.json"
+    return render_claude_config(session.repo_root, wave.agent, destination)
 
 
 def _write_blocked_response(

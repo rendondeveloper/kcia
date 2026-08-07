@@ -1,0 +1,41 @@
+schema_version: 1
+# Servidores MCP conocidos. Habilitarlos por repositorio con `kcia mcp add <id>`.
+#
+# `roles` es el gating: qué agentes pueden ver el servidor. Se aplica de verdad en
+# Claude Code, que acepta `--mcp-config` por invocación; Cursor lee un archivo
+# global del repo, así que ahí la declaración es informativa (ver README).
+#
+# kcia nunca guarda credenciales: la sesión la abre el CLI del proveedor.
+servers:
+  atlassian:
+    display_name: "Atlassian (Jira + Confluence)"
+    transport: sse
+    url: "https://mcp.atlassian.com/v1/sse"
+    cloud_only: true
+    roles: [planner]
+    description: "Lectura de issues y páginas para entender y planear el trabajo."
+    auth_hint: >-
+      OAuth por navegador. Claude Code: `claude mcp add --transport sse atlassian
+      https://mcp.atlassian.com/v1/sse` y sigue el login. Cursor: `cursor-agent mcp
+      login atlassian`. Requiere Atlassian Cloud; Server/Data Center no lo soporta.
+    verify_hint: >-
+      Confirma la URL vigente en la documentación de Atlassian antes de depender de
+      ella: el servidor remoto sigue en evolución y la ruta ha cambiado.
+
+  github:
+    display_name: "GitHub"
+    transport: http
+    url: "https://api.githubcopilot.com/mcp/"
+    roles: [planner]
+    description: "Lectura de issues y pull requests."
+    auth_hint: >-
+      `claude mcp add --transport http github https://api.githubcopilot.com/mcp/`
+      y completa el login. Los guardrails mantienen abrir y mergear PRs deshabilitado.
+
+  sentry:
+    display_name: "Sentry"
+    transport: http
+    url: "https://mcp.sentry.dev/mcp"
+    roles: [planner, builder]
+    description: "Consulta de errores en producción al diagnosticar un bug."
+    auth_hint: "`claude mcp add --transport http sentry https://mcp.sentry.dev/mcp`"

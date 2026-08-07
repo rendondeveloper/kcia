@@ -118,6 +118,11 @@ class ClaudeAdapter:
                 disallowed.extend(req.disallowed_tools)
             cmd.extend(["--disallowed-tools", *disallowed])
 
+        if req.mcp_config is not None:
+            # --strict-mcp-config makes the role gating real: without it the CLI
+            # would also load the user's globally registered servers.
+            cmd.extend(["--mcp-config", str(req.mcp_config), "--strict-mcp-config"])
+
         if req.stream:
             cmd.extend(["--verbose", "--include-partial-messages"])
 

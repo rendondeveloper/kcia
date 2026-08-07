@@ -333,6 +333,43 @@ kcia init --yes
 
 Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours.
 
+## MCP servers
+
+Enable an MCP server per repository. kcia declares it and hands it to the right agent; the
+**provider CLI owns the login** — kcia never stores credentials.
+
+```bash
+kcia mcp catalog                 # servers kcia knows about
+kcia mcp add atlassian           # enable it here
+kcia mcp list --role builder     # what one role can actually see
+kcia mcp remove atlassian
+```
+
+`kcia mcp add` prints the login command for that server. For Atlassian that is
+`claude mcp add --transport sse atlassian <url>` (OAuth in the browser) and
+`cursor-agent mcp login atlassian`. The remote Atlassian server is **Cloud only** —
+Server and Data Center are not supported.
+
+### Per-role gating, and where it is real
+
+The catalog declares which agent roles may use each server. Atlassian is `planner` only:
+reading issues belongs to understanding and planning, not to the wave that writes code.
+
+How well that is enforced differs by provider, and the difference is worth knowing:
+
+| Provider | Mechanism | Gating |
+|---|---|---|
+| Claude Code | `--mcp-config <file>` per invocation, plus `--strict-mcp-config` | **Enforced** — each wave gets a config containing only its role's servers, and globally registered servers are ignored |
+| Cursor | reads `.cursor/mcp.json` for the whole repository | **Declarative only** — there is no per-run override, so a builder wave on Cursor can still reach an enabled server |
+
+So a planner-only server is genuinely unreachable from the builder when the builder runs on
+Claude Code, and is only a convention when it runs on Cursor. Treat the catalog's `roles`
+as a real boundary on Claude and as documentation on Cursor.
+
+Enablement lives in `.ai/mcp.yaml` and, for Cursor, `.cursor/mcp.json`. Both are gitignored
+— `.cursor/mcp.json` because a server entry may carry `headers` with a token — so enabling a
+server is per-machine, like authentication itself.
+
 ## Uninstall
 
 ```bash
@@ -752,6 +789,7 @@ Being honest about what the code does not yet do:
 | Tasks | `task init/show/inject/abort` — with `--scope` for path-limited profiles |
 | Waves | `wave list/run/approve/plan/retry/skip/logs` — session, lock, prompt composition, validation |
 | Diagnostics | `doctor` — toolchain, provider install and auth, agent and repo readiness |
+| MCP | `mcp catalog/add/remove/list` — per-repo servers with per-role gating |
 
 **Not yet implemented** — these commands exit 1: `kcia sync`, `kcia ask`, `kcia branch`,
-`kcia auth`, `kcia mcp`.
+`kcia auth`.

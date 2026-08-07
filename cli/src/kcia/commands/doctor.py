@@ -9,6 +9,7 @@ from pathlib import Path
 import typer
 
 from kcia.config import model_in_catalog, resolve_agents
+from kcia.mcp.config import resolve_enabled
 from kcia.paths import control_plane_root, find_repo_root
 from kcia.providers.base import AuthStatus
 from kcia.providers.catalog import load_catalog
@@ -127,6 +128,21 @@ def doctor() -> None:
             f"manifest {'found' if manifest.is_file() else 'missing'}",
             None if manifest.is_file() else "Run `kcia init` in this repository.",
         )
+
+    if repo is not None:
+        entries = resolve_enabled(repo)
+        if entries:
+            typer.echo("")
+            typer.echo("MCP servers")
+            for entry in entries:
+                roles = ", ".join(entry.server.roles) if entry.server.roles else "all roles"
+                report.line(OK, f"{entry.server.id}: enabled for {roles}")
+            # kcia never holds these credentials, so it cannot verify the session.
+            report.line(
+                WARN,
+                "authentication is owned by the provider CLI",
+                "Check with `claude mcp list` or `cursor-agent mcp list`.",
+            )
 
     typer.echo("")
     if report.failures:

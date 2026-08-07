@@ -39,6 +39,8 @@ class RunRequest:
     allowed_tools: list[str] | None
     disallowed_tools: list[str] | None
     cwd: Path
+    # Provider-specific MCP config file, when the wave's role has servers.
+    mcp_config: Path | None = None
 
 
 @dataclass
