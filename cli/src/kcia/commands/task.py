@@ -8,6 +8,7 @@ from typing import Optional
 
 import typer
 
+from kcia.cancel import interruptible
 from kcia.integrations.tickets import (
     FetchResult,
     atlassian_available,
@@ -87,7 +88,11 @@ def _fetch_with_progress(repo: Path, ticket_key: str) -> FetchResult:
     result = FetchResult(error="interrupted")
     progress.start()
     try:
-        result = fetch_ticket(repo, ticket_key, on_event=progress.handle)
+        # Ctrl-C stops the provider instead of leaving the terminal stuck on it.
+        with interruptible(on_request=lambda: progress.note("stopping…")) as cancel:
+            result = fetch_ticket(
+                repo, ticket_key, on_event=progress.handle, should_cancel=cancel
+            )
     finally:
         progress.finish(failed=not result.ok)
     return result

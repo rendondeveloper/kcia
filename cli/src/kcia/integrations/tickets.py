@@ -61,6 +61,7 @@ def fetch_ticket(
     *,
     provider_runner=None,
     on_event: Callable[[StreamEvent], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> FetchResult:
     if not atlassian_available(repo_root):
         return FetchResult(
@@ -103,9 +104,12 @@ def fetch_ticket(
 
     runner = provider_runner or run_provider
     try:
-        result = call_provider(runner, adapter, request, on_event)
+        result = call_provider(runner, adapter, request, on_event, should_cancel)
     except Exception as exc:  # noqa: BLE001 - surfaced to the user, never fatal
         return FetchResult(error=f"the provider call failed: {exc}")
+
+    if getattr(result, "cancel_reason", None) == "cancelled by user":
+        return FetchResult(error="cancelled.")
 
     text = (getattr(result, "output_text", "") or "").strip()
     if not text:

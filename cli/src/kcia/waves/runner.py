@@ -52,6 +52,18 @@ class WaveBlocked(Exception):
         super().__init__(f"wave '{wave.id}' is blocked: {reason}")
 
 
+class WaveCancelled(Exception):
+    """Raised when the user interrupts a running wave.
+
+    Not a failure: the provider is stopped, nothing is written, and the wave goes
+    back to `pending` so `kcia wave run` picks it up again from the start.
+    """
+
+    def __init__(self, wave: WaveDefinition) -> None:
+        self.wave = wave
+        super().__init__(f"wave '{wave.id}' was cancelled")
+
+
 class ApprovalRequired(Exception):
     """Raised instead of running a wave that a human has not approved yet.
 
@@ -170,6 +182,7 @@ def run_wave(
     on_event: Callable[[StreamEvent], None] | None = None,
     on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None = None,
     skip_approval: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> WaveResult:
     wave = get_wave(wave_id)
     check_requires(session, wave, force=force)
@@ -233,7 +246,8 @@ def run_wave(
             on_wave_start(wave, agent)
 
         runner = provider_runner or run_provider
-        result = call_provider(runner, adapter, req, on_event)
+        result = call_provider(runner, adapter, req, on_event, should_cancel)
+        _raise_if_cancelled(wave, result)
         # A wave can invoke the provider several times (validation retries); the token
         # counts reported are the total for the wave, not just the last attempt.
         usage = _Usage()
@@ -301,7 +315,8 @@ def run_wave(
                     disallowed_tools=None,
                     cwd=session.repo_root,
                 )
-                result = call_provider(runner, adapter, req, on_event)
+                result = call_provider(runner, adapter, req, on_event, should_cancel)
+                _raise_if_cancelled(wave, result)
                 usage.add(result)
                 _write_wave_outputs(wave, session, result.output_text)  # type: ignore[attr-defined]
                 plan = build_validation_plan(
@@ -343,6 +358,17 @@ def run_wave(
     except WaveBlocked:
         # Not a failure: the status and reason were already recorded.
         raise
+    except WaveCancelled:
+        # The user asked to stop. Reset to `pending` rather than `failed`: nothing
+        # was written, so the wave is simply not started yet.
+        session.set_wave_status(
+            wave_id,
+            "pending",
+            cancelled_at=_now_iso(),
+            prompt_path=str(prompt_path) if prompt_path else None,
+        )
+        session.save()
+        raise
     except Exception as exc:
         session.set_wave_status(
             wave_id,
@@ -355,6 +381,11 @@ def run_wave(
         return WaveResult(wave_id=wave_id, status="failed", error=str(exc), prompt_path=str(prompt_path) if prompt_path else None)
     finally:
         session.release_lock()
+
+
+def _raise_if_cancelled(wave: WaveDefinition, result: object) -> None:
+    if getattr(result, "cancel_reason", None) == "cancelled by user":
+        raise WaveCancelled(wave)
 
 
 def run_waves_until(

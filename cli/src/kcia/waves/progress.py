@@ -96,6 +96,14 @@ class WaveProgress:
             elif isinstance(event, TextDelta):
                 self._activity = "writing response"
 
+    def note(self, text: str) -> None:
+        """Replace the activity with a message of our own (e.g. `stopping…`).
+
+        Called from a signal handler, so it must not do anything but set state.
+        """
+        with self._lock:
+            self._activity = text
+
     def finish(self, *, failed: bool = False) -> None:
         self._stop.set()
         if self._thread is not None:

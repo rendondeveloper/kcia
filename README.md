@@ -276,6 +276,36 @@ Agent configuration (`kcia agent set`) is done once on your machine — see
 (written to `.ai/local/agents.yaml`, gitignored) — see
 [Per-project models](#per-project-models).
 
+### Stopping a run
+
+**Ctrl-C.** It stops the provider that is running, not just kcia:
+
+```
+⠹ implementation · builder · cursor/composer-2.5 — stopping… · 3m02s · 5 tools · 9k tok
+
+Stopped `implementation`. The provider was terminated and nothing was written.
+It is pending again — `kcia wave run` starts it from the top.
+```
+
+The wave goes back to **`pending`**, not `failed`: a wave writes its output only after the
+full response arrives, so an interrupted one simply never started. `kcia wave run` picks it
+up again, and the session lock is released, so nothing is left stuck. The exit code is `130`,
+the usual one for "interrupted".
+
+A **second Ctrl-C exits immediately**, even if the provider refuses to die — you are never
+trapped waiting for it.
+
+This is polled by the loop reading the provider's output, which is where a run spends
+essentially all its time. A provider that streams nothing at all is just as cancellable: its
+output is read on a separate thread, so neither the cancel nor the idle timeout can be
+blocked by a silent CLI. `kcia task init` on a Jira issue is interruptible the same way.
+
+To throw the whole task away instead of just the running wave:
+
+```bash
+kcia task abort        # deletes the session; the files it wrote stay on disk
+```
+
 ## Git flow: branching and closing a task
 
 **No wave ever runs `git`.** The guardrails block `checkout -b`, `commit` and `push` for the

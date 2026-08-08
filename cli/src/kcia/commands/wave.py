@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import signal
 import time
 from pathlib import Path
 from typing import Optional
 
 import typer
 
+from kcia.cancel import interruptible
 from kcia.config import resolve_agents
 from kcia.paths import find_repo_root
 from kcia.usage import format_duration, format_tokens
@@ -18,6 +18,7 @@ from kcia.waves.runner import (
     ApprovalRequired,
     approval_document,
     WaveBlocked,
+    WaveCancelled,
     check_agents_ready,
     next_pending_wave,
     run_wave,
@@ -26,13 +27,6 @@ from kcia.waves.runner import (
 from kcia.waves.session import Session, runs_dir
 
 app = typer.Typer(help="Run and inspect pipeline waves.", no_args_is_help=True)
-
-_cancel_requested = False
-
-
-def _handle_sigint(signum: int, frame: object) -> None:
-    global _cancel_requested
-    _cancel_requested = True
 
 
 @app.command("list")
@@ -131,6 +125,11 @@ class _ProgressReporter:
         if self._current is not None:
             self._current.handle(event)
 
+    def note(self, text: str) -> None:
+        """Show a message of ours on the live line; safe from a signal handler."""
+        if self._current is not None:
+            self._current.note(text)
+
     def finish(self, *, failed: bool = False) -> None:
         if self._current is not None:
             self._current.finish(failed=failed)
@@ -157,10 +156,6 @@ def wave_run(
 
 
 def _load_runnable_session() -> Session:
-    global _cancel_requested
-    _cancel_requested = False
-    signal.signal(signal.SIGINT, _handle_sigint)
-
     repo = find_repo_root()
     if repo is None:
         typer.echo("No git repository found.")
@@ -214,10 +209,37 @@ def _execute(
     reporter = _ProgressReporter(enabled=not quiet)
     run_started = time.monotonic()
 
+    with interruptible(on_request=lambda: reporter.note("stopping…")) as cancel:
+        _run_loop(
+            session,
+            wave_id=wave_id,
+            until=until,
+            force=force,
+            yes=yes,
+            reporter=reporter,
+            cancel=cancel,
+            run_started=run_started,
+        )
+
+
+def _render_cancelled(wave_id: str) -> None:
+    typer.echo("")
+    typer.echo(f"Stopped `{wave_id}`. The provider was terminated and nothing was written.")
+    typer.echo("It is pending again — `kcia wave run` starts it from the top.")
+
+
+def _run_loop(
+    session: Session,
+    *,
+    wave_id: Optional[str],
+    until: Optional[str],
+    force: bool,
+    yes: bool,
+    reporter: "_ProgressReporter",
+    cancel,  # noqa: ANN001 - kcia.cancel.Cancellation
+    run_started: float,
+) -> None:
     if wave_id:
-        if _cancel_requested:
-            typer.echo("Cancelled.")
-            raise typer.Exit(code=130)
         try:
             result = run_wave(
                 wave_id,
@@ -226,6 +248,7 @@ def _execute(
                 on_event=reporter.handle,
                 on_wave_start=reporter.start,
                 skip_approval=yes,
+                should_cancel=cancel,
             )
         except ApprovalRequired as gate:
             reporter.finish()
@@ -235,6 +258,10 @@ def _execute(
             reporter.finish()
             _render_blocked(blocked)
             raise typer.Exit(code=2) from blocked
+        except WaveCancelled as stopped:
+            reporter.finish(failed=True)
+            _render_cancelled(stopped.wave.id)
+            raise typer.Exit(code=130) from stopped
         reporter.finish(failed=result.status != "completed")
         if result.status == "completed":
             if result.output_path:
@@ -246,11 +273,7 @@ def _execute(
 
     target = until
     while True:
-        if _cancel_requested:
-            pending = next_pending_wave(session)
-            if pending:
-                session.set_wave_status(pending.id, "failed", error="interrupted")
-                session.save()
+        if cancel.requested:
             typer.echo("Cancelled.")
             raise typer.Exit(code=130)
 
@@ -273,6 +296,7 @@ def _execute(
                 on_event=reporter.handle,
                 on_wave_start=reporter.start,
                 skip_approval=yes,
+                should_cancel=cancel,
             )
         except ApprovalRequired as gate:
             reporter.finish()
@@ -282,6 +306,10 @@ def _execute(
             reporter.finish()
             _render_blocked(blocked)
             raise typer.Exit(code=2) from blocked
+        except WaveCancelled as stopped:
+            reporter.finish(failed=True)
+            _render_cancelled(stopped.wave.id)
+            raise typer.Exit(code=130) from stopped
         reporter.finish(failed=result.status != "completed")
         if result.status != "completed":
             typer.echo(f"Wave `{pending.id}` failed: {result.error}")

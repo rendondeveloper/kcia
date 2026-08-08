@@ -18,6 +18,12 @@ entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
 - `kcia task inject` is now `kcia task answer` — the name describes what the user does
   (answer the agent, or add context) instead of the mechanism. `inject` still works as a
   hidden alias.
+- Ctrl-C now stops a running wave. It terminates the provider subprocess and returns the
+  wave to `pending` (exit code 130); a second Ctrl-C exits immediately. Previously the
+  handler only set a flag read *between* waves, so the terminal looked frozen for the whole
+  provider call. Provider stdout is read on its own thread, so a silent provider can no
+  longer block either the cancel or the idle timeout. `kcia task init`'s Jira fetch is
+  interruptible the same way.
 - `kcia wave run` closes a finished pipeline by pointing at `git diff` and `kcia commit`.
 - `kcia doctor` reports `gh`, the current branch, the detected base branch, and the remote.
 - Prompt composition now accounts for token usage per section (`waves/budget.py`) and
