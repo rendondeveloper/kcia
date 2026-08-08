@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from kcia.config import resolve_agents
 from kcia.mcp.config import (
@@ -21,7 +22,8 @@ from kcia.mcp.config import (
 from kcia.paths import control_plane_root
 from kcia.providers.base import RunRequest
 from kcia.providers.registry import get_adapter
-from kcia.providers.runner import run_provider
+from kcia.providers.events import StreamEvent
+from kcia.providers.runner import call_provider, run_provider
 from kcia.render import render_template
 from kcia.waves.blocked import detect_blocked
 from kcia.waves.session import context_dir, runs_dir
@@ -48,7 +50,18 @@ def atlassian_available(repo_root: Path) -> bool:
     )
 
 
-def fetch_ticket(repo_root: Path, ticket_key: str, *, provider_runner=None) -> FetchResult:
+def fetch_agent(repo_root: Path):
+    """The agent that performs the fetch, for progress labelling."""
+    return resolve_agents(repo_root)[FETCH_ROLE]
+
+
+def fetch_ticket(
+    repo_root: Path,
+    ticket_key: str,
+    *,
+    provider_runner=None,
+    on_event: Callable[[StreamEvent], None] | None = None,
+) -> FetchResult:
     if not atlassian_available(repo_root):
         return FetchResult(
             error=(
@@ -90,7 +103,7 @@ def fetch_ticket(repo_root: Path, ticket_key: str, *, provider_runner=None) -> F
 
     runner = provider_runner or run_provider
     try:
-        result = runner(adapter, request)
+        result = call_provider(runner, adapter, request, on_event)
     except Exception as exc:  # noqa: BLE001 - surfaced to the user, never fatal
         return FetchResult(error=f"the provider call failed: {exc}")
 

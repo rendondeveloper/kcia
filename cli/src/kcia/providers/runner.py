@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import subprocess
 import threading
 import time
@@ -21,6 +22,28 @@ class RunnerLimits:
     stuck_warning_seconds: int = STUCK_WARNING_SECONDS
     max_tool_calls: int | None = None
     max_files_read: int | None = None
+
+
+def call_provider(
+    runner: Callable[..., "RunResult"],
+    adapter: ProviderAdapter,
+    req: RunRequest,
+    on_event: Callable[[StreamEvent], None] | None = None,
+) -> "RunResult":
+    """Call a provider runner, forwarding `on_event` only when it accepts one.
+
+    Runners injected by tests take just (adapter, req); passing the callback
+    unconditionally would break them.
+    """
+    if on_event is None:
+        return runner(adapter, req)
+    try:
+        signature = inspect.signature(runner)
+    except (TypeError, ValueError):
+        return runner(adapter, req)
+    if "on_event" not in signature.parameters:
+        return runner(adapter, req)
+    return runner(adapter, req, on_event=on_event)
 
 
 def run_provider(

@@ -8,9 +8,15 @@ from typing import Optional
 
 import typer
 
-from kcia.integrations.tickets import atlassian_available, fetch_ticket
+from kcia.integrations.tickets import (
+    FetchResult,
+    atlassian_available,
+    fetch_agent,
+    fetch_ticket,
+)
 from kcia.paths import find_repo_root
 from kcia.usage import collect_usage, format_duration, format_tokens
+from kcia.waves.progress import WaveProgress
 from kcia.waves.session import Session, classify_input, load_manifest_raw
 
 app = typer.Typer(help="Manage tasks and work items.", no_args_is_help=True)
@@ -74,7 +80,20 @@ def task_init(
         _fetch_ticket(repo, ticket_key or text, fetch=fetch)
 
 
-def _fetch_ticket(repo: "Path", ticket_key: str, *, fetch: bool | None) -> None:
+def _fetch_with_progress(repo: Path, ticket_key: str) -> FetchResult:
+    """Run the fetch behind the same live status line the waves use."""
+    agent = fetch_agent(repo)
+    progress = WaveProgress(f"fetch {ticket_key}", "planner", agent.provider, agent.model)
+    result = FetchResult(error="interrupted")
+    progress.start()
+    try:
+        result = fetch_ticket(repo, ticket_key, on_event=progress.handle)
+    finally:
+        progress.finish(failed=not result.ok)
+    return result
+
+
+def _fetch_ticket(repo: Path, ticket_key: str, *, fetch: bool | None) -> None:
     """Pull the issue body onto disk so the waves start with the real request.
 
     Defaults to on, because a ticket task whose body never arrives gives the
@@ -90,8 +109,7 @@ def _fetch_ticket(repo: "Path", ticket_key: str, *, fetch: bool | None) -> None:
         )
         return
 
-    typer.echo(f"Fetching {ticket_key}…")
-    result = fetch_ticket(repo, ticket_key)
+    result = _fetch_with_progress(repo, ticket_key)
     if result.ok:
         typer.echo(f"Wrote {result.path}")
         return
@@ -164,8 +182,7 @@ def task_fetch() -> None:
         typer.echo("This task is not a ticket. `task fetch` only applies to ticket mode.")
         raise typer.Exit(code=1)
 
-    typer.echo(f"Fetching {ticket_key}…")
-    result = fetch_ticket(repo, ticket_key)
+    result = _fetch_with_progress(repo, ticket_key)
     if not result.ok:
         typer.echo(f"Could not fetch {ticket_key} — {result.error}")
         raise typer.Exit(code=1)

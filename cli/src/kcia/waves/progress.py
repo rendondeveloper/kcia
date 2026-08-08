@@ -29,7 +29,10 @@ _TICK = 0.1
 
 
 class WaveProgress:
-    """Renders one status line per wave, refreshed in place on a TTY.
+    """Renders one status line per agent invocation, refreshed in place on a TTY.
+
+    Used for waves and for the shorter calls around them — the ticket fetch, for
+    one — so every provider call reports progress the same way.
 
     Off a TTY (CI, pipes, `| tee`) it degrades to plain one-shot lines, so logs
     stay readable and never fill with escape codes.

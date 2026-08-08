@@ -152,3 +152,31 @@ def test_the_fetch_requests_the_read_only_tools(repo: Path) -> None:
     fetch_ticket(repo, "PROJ-123", provider_runner=_runner(TICKET, seen))
     assert seen["mcp_tools"], "the fetch would be denied without an allowlist"
     assert all(t.startswith("mcp__atlassian__") for t in seen["mcp_tools"])
+
+
+def test_the_fetch_streams_progress_events(repo: Path) -> None:
+    """The fetch reports like a wave, instead of a static line for 12 seconds."""
+    from kcia.providers.events import ToolCallStart
+
+    save_enabled(repo, {"atlassian": {}})
+    seen: list = []
+
+    def streaming_runner(_adapter, req, *, on_event=None):
+        assert on_event is not None, "fetch_ticket must forward on_event"
+        on_event(ToolCallStart(name="mcp__atlassian__getJiraIssue", input_preview="PROJ-123"))
+        return RunResult(output_text=TICKET, exit_code=0)
+
+    result = fetch_ticket(
+        repo, "PROJ-123", provider_runner=streaming_runner, on_event=seen.append
+    )
+    assert result.ok
+    assert [type(e).__name__ for e in seen] == ["ToolCallStart"]
+
+
+def test_runners_without_on_event_still_work(repo: Path) -> None:
+    """Simple injected runners take (adapter, req) only."""
+    save_enabled(repo, {"atlassian": {}})
+    result = fetch_ticket(
+        repo, "PROJ-123", provider_runner=_runner(TICKET), on_event=lambda _e: None
+    )
+    assert result.ok

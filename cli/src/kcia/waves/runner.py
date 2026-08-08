@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,7 +12,7 @@ from kcia.providers.base import RunRequest
 from kcia.providers.catalog import load_catalog
 from kcia.providers.events import StreamEvent
 from kcia.providers.registry import get_adapter
-from kcia.providers.runner import run_provider
+from kcia.providers.runner import call_provider, run_provider
 from kcia.mcp.config import (
     CURSOR_CONFIG,
     allowed_tools_for_role,
@@ -234,7 +233,7 @@ def run_wave(
             on_wave_start(wave, agent)
 
         runner = provider_runner or run_provider
-        result = _invoke(runner, adapter, req, on_event)
+        result = call_provider(runner, adapter, req, on_event)
         # A wave can invoke the provider several times (validation retries); the token
         # counts reported are the total for the wave, not just the last attempt.
         usage = _Usage()
@@ -302,7 +301,7 @@ def run_wave(
                     disallowed_tools=None,
                     cwd=session.repo_root,
                 )
-                result = _invoke(runner, adapter, req, on_event)
+                result = call_provider(runner, adapter, req, on_event)
                 usage.add(result)
                 _write_wave_outputs(wave, session, result.output_text)  # type: ignore[attr-defined]
                 plan = build_validation_plan(
@@ -389,28 +388,6 @@ def run_waves_until(
         if target_wave_id and wave.id == target_wave_id:
             break
     return results
-
-
-def _invoke(
-    runner: ProviderRunner,
-    adapter: object,
-    req: RunRequest,
-    on_event: Callable[[StreamEvent], None] | None,
-) -> object:
-    """Call the provider runner, forwarding `on_event` only when it accepts one.
-
-    Injected runners in tests take just (adapter, req); passing the callback
-    unconditionally would break them.
-    """
-    if on_event is None:
-        return runner(adapter, req)
-    try:
-        signature = inspect.signature(runner)
-    except (TypeError, ValueError):
-        return runner(adapter, req)
-    if "on_event" not in signature.parameters:
-        return runner(adapter, req)
-    return runner(adapter, req, on_event=on_event)
 
 
 def _render_mcp_config(session: Session, wave: WaveDefinition, provider: str) -> Path | None:
