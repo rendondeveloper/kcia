@@ -24,6 +24,9 @@ class McpServer:
     cloud_only: bool = False
     # Which agent roles may see this server. Empty means every role.
     roles: tuple[str, ...] = field(default_factory=tuple)
+    # Tool names to pre-approve. Claude denies every MCP call in `--print` mode
+    # without this, and naming individual tools is what keeps write tools out.
+    allowed_tools: tuple[str, ...] = field(default_factory=tuple)
 
     def allows(self, role: str) -> bool:
         return not self.roles or role in self.roles
@@ -50,5 +53,6 @@ def load_mcp_catalog() -> dict[str, McpServer]:
             verify_hint=raw.get("verify_hint", ""),
             cloud_only=bool(raw.get("cloud_only", False)),
             roles=tuple(raw.get("roles") or ()),
+            allowed_tools=tuple(raw.get("allowed_tools") or ()),
         )
     return servers

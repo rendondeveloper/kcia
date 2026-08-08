@@ -52,7 +52,13 @@ def task_init(
         _validate_scope(repo, scope_paths)
 
     manifest_raw = load_manifest_raw(repo)
-    mode = classify_input(text, manifest_raw, ticket=ticket, prompt=prompt)
+    mode = classify_input(
+        text,
+        manifest_raw,
+        ticket=ticket,
+        prompt=prompt,
+        issue_tracker_connected=atlassian_available(repo),
+    )
     ticket_key = text.strip() if mode == "ticket" else None
     session = Session.create(
         repo,

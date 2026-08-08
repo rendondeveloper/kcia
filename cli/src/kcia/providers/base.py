@@ -41,6 +41,7 @@ class RunRequest:
     cwd: Path
     # Provider-specific MCP config file, when the wave's role has servers.
     mcp_config: Path | None = None
+    mcp_tools: list[str] | None = None
 
 
 @dataclass

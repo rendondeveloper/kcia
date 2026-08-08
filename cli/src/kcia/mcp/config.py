@@ -72,6 +72,14 @@ def servers_for_role(repo_root: Path, role: str) -> list[EnabledServer]:
     return [entry for entry in resolve_enabled(repo_root) if entry.server.allows(role)]
 
 
+def allowed_tools_for_role(repo_root: Path, role: str) -> list[str]:
+    """Tool names the role may call, across its enabled servers."""
+    tools: list[str] = []
+    for entry in servers_for_role(repo_root, role):
+        tools.extend(entry.server.allowed_tools)
+    return tools
+
+
 def _server_payload(entry: EnabledServer) -> dict[str, object]:
     payload: dict[str, object] = {"type": entry.server.transport, "url": entry.server.url}
     headers = entry.settings.get("headers")

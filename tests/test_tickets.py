@@ -40,6 +40,7 @@ def _runner(text: str, seen: dict | None = None):
             seen["prompt"] = req.prompt
             seen["mcp_config"] = req.mcp_config
             seen["allow_edits"] = req.allow_edits
+            seen["mcp_tools"] = req.mcp_tools
         return RunResult(output_text=text, exit_code=0)
 
     return run
@@ -128,3 +129,26 @@ def test_prompt_mode_never_reads_a_stale_ticket(repo: Path) -> None:
 
     prompt = build_prompt(get_wave("understanding"), Session.load(repo))
     assert "Show a progress indicator" not in prompt
+
+
+def test_enabling_the_mcp_is_enough_to_classify_a_ticket(repo: Path) -> None:
+    """Requiring a manifest edit too meant `task init IP-116` silently became a
+    prompt whose text happened to be an issue key."""
+    from kcia.waves.session import classify_input, load_manifest_raw
+
+    manifest = load_manifest_raw(repo)
+    assert manifest["integrations"]["jira"]["enabled"] is False
+
+    assert classify_input("IP-116", manifest) == "prompt"
+    assert classify_input("IP-116", manifest, issue_tracker_connected=True) == "ticket"
+    # Free-form text is still a prompt, and --prompt still wins.
+    assert classify_input("fix the overflow", manifest, issue_tracker_connected=True) == "prompt"
+    assert classify_input("IP-116", manifest, issue_tracker_connected=True, prompt=True) == "prompt"
+
+
+def test_the_fetch_requests_the_read_only_tools(repo: Path) -> None:
+    save_enabled(repo, {"atlassian": {}})
+    seen: dict = {}
+    fetch_ticket(repo, "PROJ-123", provider_runner=_runner(TICKET, seen))
+    assert seen["mcp_tools"], "the fetch would be denied without an allowlist"
+    assert all(t.startswith("mcp__atlassian__") for t in seen["mcp_tools"])

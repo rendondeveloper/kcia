@@ -14,7 +14,12 @@ from kcia.providers.catalog import load_catalog
 from kcia.providers.events import StreamEvent
 from kcia.providers.registry import get_adapter
 from kcia.providers.runner import run_provider
-from kcia.mcp.config import CURSOR_CONFIG, render_claude_config, servers_for_role
+from kcia.mcp.config import (
+    CURSOR_CONFIG,
+    allowed_tools_for_role,
+    render_claude_config,
+    servers_for_role,
+)
 from kcia.waves.blocked import detect_blocked
 from kcia.waves.definitions import WaveDefinition, get_wave, load_waves
 from kcia.waves.prompts import build_prompt, build_prompt_with_stats
@@ -207,11 +212,13 @@ def run_wave(
 
         # Rendered per wave, so a role only ever sees the servers it may use.
         mcp_config = _render_mcp_config(session, wave, agent.provider)
+        mcp_tools = allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
 
         req = RunRequest(
             prompt=prompt,
             model=agent.model,
             mcp_config=mcp_config,
+            mcp_tools=mcp_tools,
             allow_edits=wave.allow_edits,
             stream=adapter.capabilities.supports_streaming,
             workspace_dirs=[session.repo_root],
@@ -284,6 +291,7 @@ def run_wave(
                     prompt=retry_prompt,
                     model=agent.model,
                     mcp_config=mcp_config,
+                    mcp_tools=mcp_tools,
                     allow_edits=wave.allow_edits,
                     stream=adapter.capabilities.supports_streaming,
                     workspace_dirs=[session.repo_root],

@@ -66,6 +66,7 @@ def classify_input(
     *,
     ticket: bool = False,
     prompt: bool = False,
+    issue_tracker_connected: bool = False,
 ) -> TaskMode:
     if ticket:
         return "ticket"
@@ -75,7 +76,10 @@ def classify_input(
     manifest = manifest or {}
     integrations = manifest.get("integrations") or {}
     jira = integrations.get("jira") or {}
-    if not jira.get("enabled", False):
+    # Enabling the Atlassian MCP is a clear enough statement of intent on its own;
+    # requiring a manifest edit as well meant `kcia task init IP-116` silently
+    # became a prompt whose text happened to be an issue key.
+    if not jira.get("enabled", False) and not issue_tracker_connected:
         return "prompt"
 
     stripped = text.strip()

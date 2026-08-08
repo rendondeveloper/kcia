@@ -422,7 +422,11 @@ convenience, not a dependency.
 
 ##### Turning ticket mode on
 
-Ticket classification is **off by default**. Turn it on by editing `.ai/manifest.yaml`:
+`kcia mcp add atlassian` is enough: with the server enabled, an argument shaped like an
+issue key (`IP-116`) is read as a ticket. `--prompt` and `--ticket` force either mode.
+
+To restrict which keys count as tickets, or to use ticket mode without the MCP, declare
+them in `.ai/manifest.yaml`:
 
 ```yaml
 integrations:
@@ -453,10 +457,19 @@ jira:
   allow_transition: false
 ```
 
-Those are instructions in the prompt, not enforced tool restrictions — if the MCP server
-exposes a write tool and the model is authenticated, nothing at the CLI level blocks the
-call. Treat them as policy, and keep the Atlassian account's own permissions as the real
-boundary.
+On Claude Code these are **enforced**, not just requested. The catalog lists the exact
+read-only tools kcia pre-approves, and Claude denies every MCP call that is not on that
+list. Granting the server as a whole (`mcp__atlassian`) would have pulled in
+`createJiraIssue`, `editJiraIssue`, `addCommentToJiraIssue` and `transitionJiraIssue`, so
+the entries are enumerated one by one and a test fails if a write tool ever appears among
+them.
+
+The allowlist is also what makes MCP work at all: in `--print` mode Claude denies every
+MCP call unless the tool is named, which is why an agent with the server attached but no
+allowlist reports that it "was not granted Jira access".
+
+On Cursor there is no equivalent per-run restriction, so there the guardrails remain
+policy and the Atlassian account's own permissions are the real boundary.
 
 ### Per-role gating, and where it is real
 

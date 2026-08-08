@@ -12,7 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from kcia.config import resolve_agents
-from kcia.mcp.config import CURSOR_CONFIG, render_claude_config, servers_for_role
+from kcia.mcp.config import (
+    CURSOR_CONFIG,
+    allowed_tools_for_role,
+    render_claude_config,
+    servers_for_role,
+)
 from kcia.paths import control_plane_root
 from kcia.providers.base import RunRequest
 from kcia.providers.registry import get_adapter
@@ -80,6 +85,7 @@ def fetch_ticket(repo_root: Path, ticket_key: str, *, provider_runner=None) -> F
         disallowed_tools=None,
         cwd=repo_root,
         mcp_config=mcp_config,
+        mcp_tools=allowed_tools_for_role(repo_root, FETCH_ROLE),
     )
 
     runner = provider_runner or run_provider

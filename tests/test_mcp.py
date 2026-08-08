@@ -179,3 +179,31 @@ def test_run_wave_gives_the_planner_its_servers_and_the_builder_none(tmp_path: P
     session = Session.load(repo)
     run_wave("documentation-final", session, force=True, provider_runner=capture)
     assert next(iter(seen.values())) is None, "builder must not receive planner-only servers"
+
+
+def test_claude_allowlists_mcp_tools_because_print_mode_denies_them() -> None:
+    """Without --allowed-tools every MCP call is denied non-interactively."""
+    adapter = ClaudeAdapter(load_catalog()["claude"])
+    cmd = adapter.build_command(
+        RunRequest(
+            prompt="p", model="m", allow_edits=False, stream=False,
+            workspace_dirs=[Path("/tmp")], session_id=None, resume=False, effort=None,
+            allowed_tools=None, disallowed_tools=None, cwd=Path("/tmp"),
+            mcp_config=Path("/tmp/mcp.json"), mcp_tools=["mcp__atlassian__getJiraIssue"],
+        )
+    )
+    assert "--allowed-tools" in cmd
+    assert "mcp__atlassian__getJiraIssue" in cmd
+
+
+def test_atlassian_allowlist_excludes_every_write_tool() -> None:
+    """The guardrails forbid commenting and transitioning; naming individual
+    read tools is what makes that a restriction instead of a request."""
+    tools = load_mcp_catalog()["atlassian"].allowed_tools
+    assert tools, "an empty allowlist would deny every call"
+    forbidden = ("create", "edit", "addComment", "addWorklog", "transitionJira", "update")
+    offenders = [t for t in tools if any(word.lower() in t.lower() for word in forbidden)]
+    assert offenders == [], offenders
+    assert "mcp__atlassian__getJiraIssue" in tools
+    # Granting the whole server would pull the write tools back in.
+    assert "mcp__atlassian" not in tools

@@ -122,6 +122,11 @@ class ClaudeAdapter:
             # --strict-mcp-config makes the role gating real: without it the CLI
             # would also load the user's globally registered servers.
             cmd.extend(["--mcp-config", str(req.mcp_config), "--strict-mcp-config"])
+            if req.mcp_tools:
+                # Without an explicit allowlist every MCP call is denied in
+                # --print mode. Naming individual tools is also what keeps the
+                # server's write tools unreachable.
+                cmd.extend(["--allowed-tools", *req.mcp_tools])
 
         if req.stream:
             cmd.extend(["--verbose", "--include-partial-messages"])
