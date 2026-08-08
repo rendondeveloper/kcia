@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Optional
 
 import typer
 
+from kcia.integrations.tickets import atlassian_available, fetch_ticket
 from kcia.paths import find_repo_root
 from kcia.usage import collect_usage, format_duration, format_tokens
 from kcia.waves.session import Session, classify_input, load_manifest_raw
@@ -34,6 +36,11 @@ def task_init(
     scope: Optional[list[str]] = typer.Option(
         None, "--scope", help="Limit active profiles to these repo-relative paths."
     ),
+    fetch: Optional[bool] = typer.Option(
+        None,
+        "--fetch/--no-fetch",
+        help="Fetch the issue into .ai/context/ticket.md (default: on in ticket mode).",
+    ),
 ) -> None:
     repo = find_repo_root()
     if repo is None:
@@ -56,6 +63,38 @@ def task_init(
         scope=scope_paths,
     )
     typer.echo(f"Task {session.task['id']} initialized in {mode} mode.")
+
+    if mode == "ticket":
+        _fetch_ticket(repo, ticket_key or text, fetch=fetch)
+
+
+def _fetch_ticket(repo: "Path", ticket_key: str, *, fetch: bool | None) -> None:
+    """Pull the issue body onto disk so the waves start with the real request.
+
+    Defaults to on, because a ticket task whose body never arrives gives the
+    planner only the key — the failure mode this exists to remove. `--no-fetch`
+    skips the provider call.
+    """
+    if fetch is False:
+        return
+    if fetch is None and not atlassian_available(repo):
+        typer.echo(
+            "No Atlassian MCP server for the planner, so the issue body was not fetched. "
+            "Run `kcia mcp add atlassian`, or write .ai/context/ticket.md yourself."
+        )
+        return
+
+    typer.echo(f"Fetching {ticket_key}…")
+    result = fetch_ticket(repo, ticket_key)
+    if result.ok:
+        typer.echo(f"Wrote {result.path}")
+        return
+
+    typer.echo(f"warning: could not fetch {ticket_key} — {result.error}")
+    typer.echo(
+        "The task is still created. Paste the issue into .ai/context/ticket.md, "
+        "or the waves will only receive the key."
+    )
 
 
 @app.command("show")
@@ -99,6 +138,32 @@ def task_show(
             elapsed = usage.per_wave_seconds.get(wave_id)
             duration = format_duration(elapsed) if elapsed is not None else "-"
             typer.echo(f"  {wave_id:<22}{format_tokens(tokens):>8}  {duration:>8}")
+
+
+@app.command("fetch")
+def task_fetch() -> None:
+    """Re-fetch the current task's issue into `.ai/context/ticket.md`."""
+    repo = find_repo_root()
+    if repo is None:
+        typer.echo("No git repository found.")
+        raise typer.Exit(code=1)
+    try:
+        session = Session.load(repo)
+    except FileNotFoundError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+
+    ticket_key = session.task.get("ticket_key")
+    if not ticket_key:
+        typer.echo("This task is not a ticket. `task fetch` only applies to ticket mode.")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Fetching {ticket_key}…")
+    result = fetch_ticket(repo, ticket_key)
+    if not result.ok:
+        typer.echo(f"Could not fetch {ticket_key} — {result.error}")
+        raise typer.Exit(code=1)
+    typer.echo(f"Wrote {result.path}")
 
 
 @app.command("inject")

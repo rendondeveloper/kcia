@@ -146,8 +146,9 @@ kcia agent set builder cursor --model composer-2.5
 # 2. Detect technologies, write manifest, generate adapters (idempotent).
 kcia init --yes                  # closes by reporting the agents it will use
 
-# 3. Start a task.
+# 3. Start a task — from a prompt, or from a Jira issue.
 kcia task init "fix the overflow on the profile screen"
+kcia task init PROJ-123           # fetches the issue; see MCP servers
 
 # Optional: limit which packages drive active profiles.
 kcia task init "fix the API" --scope packages/api
@@ -377,8 +378,51 @@ edit, not a code change.
 
 #### Working from a ticket instead of a prompt
 
-`kcia task init PROJ-123` can start a task from an issue key, but that mode is **off by
-default**. Turn it on by editing `.ai/manifest.yaml`:
+Once Jira is connected, an issue key replaces the prompt text and the rest of the pipeline
+is identical:
+
+```bash
+kcia task init PROJ-123          # instead of: kcia task init "fix the overflow"
+kcia wave run
+```
+
+`task init` fetches the issue and writes it to `.ai/context/ticket.md`, which is injected
+into every wave of a ticket task:
+
+```
+Task t_47ca41f5c049 initialized in ticket mode.
+Fetching PROJ-123…
+Wrote /path/to/your/project/.ai/context/ticket.md
+```
+
+From there the waves receive the real request — summary, description, acceptance criteria —
+not just the key, so `understanding` and `analysis` work exactly as they do from a prompt.
+
+| Command | What it does |
+|---|---|
+| `kcia task init PROJ-123` | start from an issue and fetch its body |
+| `kcia task init PROJ-123 --no-fetch` | start from the key alone, no provider call |
+| `kcia task fetch` | re-fetch the current task's issue after it changed in Jira |
+
+The fetch is one short read-only invocation of the **planner's** provider CLI with the
+Atlassian MCP attached — kcia still never calls the Atlassian API itself, and the
+credentials stay with that CLI. It cannot edit your repository.
+
+If the fetch fails — no server enabled, no access to the issue, provider down — the task is
+still created and kcia says so rather than continuing quietly:
+
+```
+warning: could not fetch PROJ-123 — issue not found
+The task is still created. Paste the issue into .ai/context/ticket.md,
+or the waves will only receive the key.
+```
+
+Writing `.ai/context/ticket.md` by hand is always a valid substitute; the fetch is a
+convenience, not a dependency.
+
+##### Turning ticket mode on
+
+Ticket classification is **off by default**. Turn it on by editing `.ai/manifest.yaml`:
 
 ```yaml
 integrations:
@@ -392,11 +436,9 @@ Those edits survive `kcia init` — the manifest keeps whatever `integrations` b
 already had. With it enabled, an argument matching a declared project key is classified as
 a ticket rather than a free-form prompt, and the task statement records the key.
 
-Be aware of what kcia does **not** do here: nothing fetches the issue body. The prompt reads
-`.ai/context/ticket.md`, and no wave writes it. So the ticket text reaches the model in one
-of two ways — the planner fetches it itself through the Atlassian MCP (which is why the
-server is planner-scoped), or you paste it into `ticket.md` by hand. Without either, the
-agent only receives the key.
+This only controls *classification*: with `project_keys: [PROJ]`, a bare `PROJ-123` is read
+as an issue rather than as prompt text. You can always force either mode with `--ticket` or
+`--prompt`.
 
 #### What the agent may do with Jira
 
@@ -852,7 +894,7 @@ Being honest about what the code does not yet do:
 | Project setup | `kcia init` — detection, manifest, bundles, adapters, gitignore |
 | Profiles | `profile list/show/detect/validate/scaffold`, inheritance, packs, resolution |
 | Agents | `agent set/show/swap` — Claude and Cursor adapters |
-| Tasks | `task init/show/inject/abort` — with `--scope` for path-limited profiles |
+| Tasks | `task init/show/fetch/inject/abort` — `--scope` for path-limited profiles, Jira issues fetched into context |
 | Waves | `wave list/run/approve/plan/retry/skip/logs` — session, lock, prompt composition, validation |
 | Diagnostics | `doctor` — toolchain, provider install and auth, agent and repo readiness |
 | MCP | `mcp catalog/add/remove/list` — per-repo servers with per-role gating |
