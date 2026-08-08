@@ -190,7 +190,7 @@ Stopped at `understanding` — the agent cannot proceed.
 
 Full response: .ai/local/runs/understanding-01.blocked.md
 Answer it, then resume:
-  kcia task inject "<your answer>"
+  kcia task answer "<your answer>"
   kcia wave retry understanding
 ```
 
@@ -224,7 +224,7 @@ Open it and edit it directly if something is wrong — your changes go
 into the builder's prompt. Then:
   kcia wave plan               print it here
   kcia wave approve            approve and continue
-  kcia task inject "..."       add context, then re-run the planning wave
+  kcia task answer "..."       add context, then re-run the planning wave
   kcia task abort              stop here
 ```
 
@@ -865,7 +865,7 @@ retries. Token usage per section is tracked internally for budgeting decisions.
 | 6 | Task context | `.ai/context/task.md` (+ `ticket.md` in ticket mode) |
 | 7 | Previous wave output | `plan.md` on `implementation` and `documentation-final` |
 | 8 | Validation error | injected on retry with the failing command's real output |
-| 9 | Injections | anything added with `kcia task inject "<text>"` |
+| 9 | Injections | anything added with `kcia task answer "<text>"` |
 | 10 | Wave instruction | `control-plane/waves/prompts/<wave>.md.j2` |
 | 11 | Output format | fixed footer |
 | 12 | Context budget | only when references were dropped to fit the budget |
@@ -1030,7 +1030,7 @@ Being honest about what the code does not yet do:
 | Project setup | `kcia init` — detection, manifest, bundles, adapters, gitignore |
 | Profiles | `profile list/show/detect/validate/scaffold`, inheritance, packs, resolution |
 | Agents | `agent set/show/swap` — Claude and Cursor adapters |
-| Tasks | `task init/show/fetch/inject/abort` — `--scope` for path-limited profiles, Jira issues fetched into context |
+| Tasks | `task init/show/fetch/answer/abort` — `--scope` for path-limited profiles, Jira issues fetched into context |
 | Waves | `wave list/run/approve/plan/retry/skip/logs` — session, lock, prompt composition, validation |
 | Diagnostics | `doctor` — toolchain, provider install and auth, agent and repo readiness |
 | MCP | `mcp catalog/add/remove/list` — per-repo servers with per-role gating |

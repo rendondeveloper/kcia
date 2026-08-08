@@ -79,7 +79,7 @@ def _render_blocked(blocked: WaveBlocked) -> None:
     if blocked.output_path:
         typer.echo(f"Full response: {blocked.output_path}")
     typer.echo("Answer it, then resume:")
-    typer.echo("  kcia task inject \"<your answer>\"")
+    typer.echo("  kcia task answer \"<your answer>\"")
     typer.echo(f"  kcia wave retry {blocked.wave.id}")
 
 
@@ -106,7 +106,7 @@ def _render_approval_gate(gate: ApprovalRequired) -> None:
         typer.echo("")
     typer.echo("  kcia wave plan               print it here")
     typer.echo("  kcia wave approve            approve and continue")
-    typer.echo("  kcia task inject \"...\"       add context, then re-run the planning wave")
+    typer.echo("  kcia task answer \"...\"       add context, then re-run the planning wave")
     typer.echo("  kcia task abort              stop here")
 
 
@@ -199,7 +199,7 @@ def _execute(
         typer.echo(f"`{stalled.id}` is waiting for an answer:")
         typer.echo(f"  {state.get('blocked_reason', 'reason not recorded')}")
         typer.echo("Answer it, then resume:")
-        typer.echo('  kcia task inject "<your answer>"')
+        typer.echo('  kcia task answer "<your answer>"')
         typer.echo(f"  kcia wave retry {stalled.id}")
         raise typer.Exit(code=2)
 

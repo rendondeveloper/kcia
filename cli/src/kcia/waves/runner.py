@@ -42,7 +42,7 @@ class WaveBlocked(Exception):
     """Raised when a wave reports it cannot proceed without an answer.
 
     Distinct from a failure: the work done so far is kept, and the wave is
-    resumed with `kcia task inject` followed by `kcia wave retry`.
+    resumed with `kcia task answer` followed by `kcia wave retry`.
     """
 
     def __init__(self, wave: WaveDefinition, reason: str, output_path: Path | None) -> None:

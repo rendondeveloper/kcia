@@ -15,6 +15,9 @@ entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
   `type: KEY - subject`, with the key omitted when the task has no ticket; types are
   `feat`, `fix`, `docs`. `--single`, `--dry-run`, `--type`, `--ticket/--no-ticket`,
   `--push`, and `--pr` (needs `gh`).
+- `kcia task inject` is now `kcia task answer` — the name describes what the user does
+  (answer the agent, or add context) instead of the mechanism. `inject` still works as a
+  hidden alias.
 - `kcia wave run` closes a finished pipeline by pointing at `git diff` and `kcia commit`.
 - `kcia doctor` reports `gh`, the current branch, the detected base branch, and the remote.
 - Prompt composition now accounts for token usage per section (`waves/budget.py`) and

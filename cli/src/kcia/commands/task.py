@@ -189,8 +189,13 @@ def task_fetch() -> None:
     typer.echo(f"Wrote {result.path}")
 
 
-@app.command("inject")
-def task_inject(text: str = typer.Argument(..., help="Answer or extra context.")) -> None:
+# `inject` was the original name; it described the mechanism (text is injected
+# into the next prompt) rather than what the user is doing, which is answering
+# the agent or adding context. Kept as a hidden alias so older docs still work.
+@app.command("answer")
+@app.command("inject", hidden=True)
+def task_answer(text: str = typer.Argument(..., help="Answer or extra context.")) -> None:
+    """Answer the agent's question, or add context, for the next wave."""
     repo = find_repo_root()
     if repo is None:
         typer.echo("No git repository found.")

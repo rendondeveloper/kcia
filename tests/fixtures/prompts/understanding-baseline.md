@@ -328,7 +328,7 @@ and nothing else. An open question you can work around is not a blocker.
 Understand the problem and bound the scope. Do not edit repository files.
 
 
-You may ask clarifying questions; they will be delivered via `kcia task inject`.
+You may ask clarifying questions; they will be delivered via `kcia task answer`.
 
 
 Produce a concise problem statement, affected areas, and open questions.
