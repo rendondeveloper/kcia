@@ -257,6 +257,12 @@ def _execute(
         pending = next_pending_wave(session)
         if pending is None:
             typer.echo(f"All waves completed in {format_duration(time.monotonic() - run_started)}.")
+            # Nothing is committed automatically: the run ends with the changes in
+            # the worktree and the decision to keep them still with the user.
+            typer.echo("")
+            typer.echo("Review the changes, then close the task:")
+            typer.echo("  git diff                     what changed")
+            typer.echo("  kcia commit                  show the commits, then confirm")
             return
 
         try:

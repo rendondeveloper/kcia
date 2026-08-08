@@ -6,7 +6,8 @@ structured, auditable pipeline — without calling any LLM API directly.
 ## Requirements
 
 - Python 3.11+
-- `git`
+- `git` — required. kcia branches and commits through the `git` binary in your repository.
+- `gh` — **optional**, only for `kcia commit --pr` (install: <https://cli.github.com>).
 - A provider CLI, **installed and logged in**, for each role you use
 
 kcia never calls an LLM API. It shells out to the CLI you already have, so that CLI — and
@@ -153,21 +154,28 @@ kcia task init PROJ-123           # fetches the issue; see MCP servers
 # Optional: limit which packages drive active profiles.
 kcia task init "fix the API" --scope packages/api
 
-# 4. Inspect the pipeline.
+# 4. Create the git-flow branch for it (asks for the base branch if it is not obvious).
+kcia branch start
+
+# 5. Inspect the pipeline.
 kcia wave list
 
-# 5. Run waves one at a time (or omit the wave id to run the next pending).
+# 6. Run waves one at a time (or omit the wave id to run the next pending).
 kcia wave run
 kcia wave run understanding
 kcia wave run --until analysis
 kcia wave run --quiet            # no live progress line (CI, logs)
 
-# 6. Review the plan, then let the build run.
+# 7. Review the plan, then let the build run.
 kcia wave approve
 
-# 7. Inspect progress and token usage.
+# 8. Inspect progress and token usage.
 kcia task show
 kcia wave logs understanding
+
+# 9. Review the diff, then close the task. Nothing is committed until you confirm.
+git diff
+kcia commit
 ```
 
 ### When the agent is blocked
@@ -267,6 +275,121 @@ Agent configuration (`kcia agent set`) is done once on your machine — see
 [Configure agents](#configure-agents-once). Use `--scope repo` to override per repository
 (written to `.ai/local/agents.yaml`, gitignored) — see
 [Per-project models](#per-project-models).
+
+## Git flow: branching and closing a task
+
+**No wave ever runs `git`.** The guardrails block `checkout -b`, `commit` and `push` for the
+agents, and leave them read-only (`status`, `diff`, `log`). Branching and committing are two
+explicit commands you run, and both stop for your confirmation. That is the point: the run
+ends with the changes in your worktree and the decision to keep them still yours.
+
+### What kcia needs to reach *your* git, per project
+
+Nothing to configure, and no credential to hand over. kcia shells out to the `git` binary
+**inside that repository**, so the remote, the credential helper, the SSH key, the signing
+key and the committer identity are exactly the ones that repo already uses — `git push` from
+kcia and `git push` from your shell do the same thing. Concretely, per project you need:
+
+| For | Requirement |
+|---|---|
+| `kcia branch start`, `kcia commit` | a git worktree (`git init` / a clone) and `user.name` + `user.email` set |
+| `kcia commit --push` | a remote (`git remote add origin <url>`) your git can already authenticate to |
+| `kcia commit --pr` | the above, plus `gh` installed and `gh auth login` done once |
+
+kcia stores no token and reads no credential. `kcia doctor` reports the branch, the detected
+base branch and whether a remote exists.
+
+### Starting the branch
+
+```bash
+kcia branch start                    # name and type come from the active task
+kcia branch start "add the loader" --type feat
+kcia branch start --base develop     # skip the base-branch question
+kcia branch base                     # just show what it would branch from
+```
+
+Names follow git flow, and carry the Jira key when the task has one:
+
+```
+feature/IP-116-add-the-commit-flow
+fix/overflow-en-el-header            # no ticket: no key in the name
+docs/IP-200-jira-guide
+```
+
+**The base branch is asked for, never guessed.** It is the one thing the worktree cannot
+tell us — a repo that merges into `develop` looks identical to one that merges into `main`.
+The rule:
+
+1. An answer already recorded in `.ai/local/git.yaml` is reused.
+2. If you are **on** `develop` / `main` / `master`, that is the base.
+3. If exactly one of those exists in the repo, that is the base.
+4. Otherwise — several conventions coexist, or none does and you are on a feature branch —
+   kcia asks, offering the current branch and each convention it found:
+
+```
+Cannot tell which branch to start from — the current branch is not a base branch
+and the repository has more than one candidate.
+
+  1. develop
+  2. main
+  3. feature/x  (current)
+
+Start from which branch? (number, or type a branch name) [1]:
+```
+
+The answer is remembered for that repository, so it is asked once. Off a TTY (CI) it does
+not guess: it exits and tells you to pass `--base`.
+
+### Closing the task
+
+```bash
+kcia commit                  # show the commits, then confirm
+kcia commit --dry-run        # show them and stop
+kcia commit "subject" --type fix
+kcia commit --single         # one commit instead of two
+kcia commit --push --pr      # push, then open the PR with gh
+```
+
+It prints exactly what it is about to write — messages **and** the files in each commit —
+and writes nothing until you answer `y`:
+
+```
+On branch feature/IP-116-add-the-commit-flow:
+
+  Commit 1 (plan)
+    docs: IP-116 - plan — add the commit flow
+      .ai/context/plan.md
+      .ai/context/decisions.md
+
+  Commit 2 (code)
+    feat: IP-116 - add the commit flow
+      cli/src/kcia/git/commit.py
+      tests/test_git_commit.py
+
+Commit this? [y/N]:
+```
+
+**The plan gets its own commit, first.** It is the record of *why* the code changed;
+keeping it in a separate `docs:` commit means a reviewer can read the intent without digging
+it out of the diff. `--single` collapses both into one.
+
+Message format — type, the issue key when there is one, then the subject:
+
+```
+feat: IP-116 - add the commit flow
+fix: header overflow                  # no ticket: nothing is prefixed
+docs: IP-200 - jira guide
+```
+
+The types are `feat`, `fix` and `docs`, and nothing else. In ticket mode the key comes from
+the task, so you never retype it; `--ticket IP-9` overrides it and `--no-ticket` drops it.
+When there is no ticket **no placeholder is invented** — an issue key that does not exist is
+worse than no key at all. The type is inferred from the subject and the changed files, and
+`--type` always wins.
+
+Two things never reach a commit: `.ai/local/`, `.ai/cache/` and `.ai/generated/` (regenerable
+output, gitignored), and whatever you happened to have staged for an unrelated reason — kcia
+resets the index and stages each commit's files explicitly.
 
 ## Updating
 
@@ -911,6 +1034,6 @@ Being honest about what the code does not yet do:
 | Waves | `wave list/run/approve/plan/retry/skip/logs` — session, lock, prompt composition, validation |
 | Diagnostics | `doctor` — toolchain, provider install and auth, agent and repo readiness |
 | MCP | `mcp catalog/add/remove/list` — per-repo servers with per-role gating |
+| Git | `branch start/base`, `commit` — git-flow branching and the confirmed commits that close a task |
 
-**Not yet implemented** — these commands exit 1: `kcia sync`, `kcia ask`, `kcia branch`,
-`kcia auth`.
+**Not yet implemented** — these commands exit 1: `kcia sync`, `kcia ask`, `kcia auth`.

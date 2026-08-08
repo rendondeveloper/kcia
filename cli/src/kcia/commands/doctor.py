@@ -37,6 +37,32 @@ class _Report:
             self.warnings += 1
 
 
+def _report_git_flow(report: "_Report", repo: Path) -> None:
+    """Whether `kcia branch start` knows where to branch from, and if a remote exists."""
+    from kcia.git.flow import detect_base_branch
+    from kcia.git.repo import GitError, current_branch, is_git_repo, remotes
+
+    if not is_git_repo(repo):
+        report.line(WARN, "not a git worktree", "`kcia branch` and `kcia commit` need one.")
+        return
+    try:
+        detected = detect_base_branch(repo)
+        report.line(OK, f"branch {current_branch(repo)}")
+        report.line(
+            OK if detected.certain else WARN,
+            f"base branch {detected.name} ({detected.reason})",
+            None if detected.certain else "`kcia branch start` will ask, or pass `--base`.",
+        )
+        names = remotes(repo)
+        report.line(
+            OK if names else WARN,
+            f"remote {', '.join(names) if names else 'none'}",
+            None if names else "`kcia commit --push` needs one: `git remote add origin <url>`.",
+        )
+    except GitError as exc:
+        report.line(WARN, f"git state unreadable: {exc}")
+
+
 def doctor() -> None:
     """Check the toolchain, providers, agents and repository state."""
     report = _Report()
@@ -50,6 +76,12 @@ def doctor() -> None:
     )
     git = shutil.which("git")
     report.line(OK if git else FAIL, f"git {git or 'not found'}")
+    gh = shutil.which("gh")
+    report.line(
+        OK if gh else WARN,
+        f"gh {gh or 'not found'}",
+        None if gh else "Optional: only `kcia commit --pr` needs it (https://cli.github.com).",
+    )
 
     try:
         root = control_plane_root()
@@ -128,6 +160,7 @@ def doctor() -> None:
             f"manifest {'found' if manifest.is_file() else 'missing'}",
             None if manifest.is_file() else "Run `kcia init` in this repository.",
         )
+        _report_git_flow(report, repo)
 
     if repo is not None:
         entries = resolve_enabled(repo)

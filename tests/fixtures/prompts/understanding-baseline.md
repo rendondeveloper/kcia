@@ -55,13 +55,13 @@ tool_control:
       - "reset --hard"
       - "merge"
       - "rebase --onto"
+      - "checkout -b"
+      - "commit"
+      - "push"
     allowed_without_additional_review:
       - "status"
       - "diff"
-      - "checkout -b"
-      - "add"
-      - "commit"
-      - "push"
+      - "log"
   shell:
     blocked_patterns:
       - '(^|\\s)rm\\s+-rf'
@@ -164,14 +164,13 @@ If an input cannot be trusted, the agent must:
 
 # Tool-Level Guardrail
 
-The tool-level guardrail limits what the CLI or the agent may do through Git, shell, Jira, GitHub, or local file operations.
+Limits what the CLI or the agent may do through Git, shell, Jira, GitHub or local files.
 
 ## Git Rules
 
-- Never run `git push --force`.
-- Never run `git reset --hard`.
-- Never auto-merge.
-- Non-destructive inspection commands are allowed.
+- Never run `git push --force`, `git reset --hard`, or any merge.
+- Read-only git only (`status`, `diff`, `log`): branch and commit are the user's, with
+  `kcia branch start` / `kcia commit`.
 
 ## Shell Rules
 

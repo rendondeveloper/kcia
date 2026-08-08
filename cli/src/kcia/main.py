@@ -5,6 +5,7 @@ from kcia.commands.agent import app as agent_app
 from kcia.commands.ask import ask
 from kcia.commands.auth import app as auth_app
 from kcia.commands.branch import app as branch_app
+from kcia.commands.commit import commit_command
 from kcia.commands.doctor import doctor
 from kcia.commands.init import init
 from kcia.commands.mcp import app as mcp_app
@@ -21,7 +22,9 @@ Common commands:
   kcia profile list
   kcia agent show
   kcia task init "fix the overflow"
+  kcia branch start
   kcia wave run
+  kcia commit
   kcia doctor
   kcia ask "which profiles apply to lib/main.dart?"
 """
@@ -37,6 +40,7 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(branch_app, name="branch")
 app.add_typer(mcp_app, name="mcp")
 
+app.command("commit", help="Review and write the commits that close the task.")(commit_command)
 app.command("doctor", help="Validate local setup and repository configuration.")(doctor)
 app.command("ask", help="Run a direct query without creating a task.")(ask)
 app.command("sync", help="Sync the control plane and re-render adapters.")(sync)
