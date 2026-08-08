@@ -7,9 +7,17 @@ entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
 
 ### CLI
 
-- `kcia branch start` / `kcia branch base`: git-flow branching for the active task
-  (`feature|fix|docs/<KEY>-<slug>`). The base branch is detected from the repository and
-  **asked for** when it is ambiguous, then remembered in `.ai/local/git.yaml`.
+- Branching model chosen once, at `kcia init`: git flow (each task branches off a
+  development branch) or none (each task is done on the current branch). `main`/`master` and
+  `develop`/`development`/`dev` are read off the real branches, local and remote, and only
+  what stays ambiguous is asked. Stored in `.ai/local/git.yaml`; `--gitflow/--no-gitflow`,
+  `--main-branch` and `--develop-branch` skip the dialog, and `--yes` never blocks.
+- `kcia wave run` opens the task's branch automatically from that config and never asks.
+  Once per task, right before the first wave; a taken name, a missing base branch or a
+  branch you moved to yourself are reported and the run continues where it is.
+- `kcia branch config` shows the recorded model and where to change it.
+- `kcia branch start` / `kcia branch base` stay for manual use — a branch before the
+  pipeline, or a name other than the one derived from the task.
 - `kcia commit`: closes a task with two commits — the plan (`docs:`) and the code — after
   showing the messages and files and waiting for confirmation. Message format
   `type: KEY - subject`, with the key omitted when the task has no ticket; types are

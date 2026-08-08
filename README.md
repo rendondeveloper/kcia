@@ -154,26 +154,24 @@ kcia task init PROJ-123           # fetches the issue; see MCP servers
 # Optional: limit which packages drive active profiles.
 kcia task init "fix the API" --scope packages/api
 
-# 4. Create the git-flow branch for it (asks for the base branch if it is not obvious).
-kcia branch start
-
-# 5. Inspect the pipeline.
+# 4. Inspect the pipeline. (The task's branch is opened by `wave run` itself,
+#    following the model you chose at init — nothing to do here.)
 kcia wave list
 
-# 6. Run waves one at a time (or omit the wave id to run the next pending).
+# 5. Run waves one at a time (or omit the wave id to run the next pending).
 kcia wave run
 kcia wave run understanding
 kcia wave run --until analysis
 kcia wave run --quiet            # no live progress line (CI, logs)
 
-# 7. Review the plan, then let the build run.
+# 6. Review the plan, then let the build run.
 kcia wave approve
 
-# 8. Inspect progress and token usage.
+# 7. Inspect progress and token usage.
 kcia task show
 kcia wave logs understanding
 
-# 9. Review the diff, then close the task. Nothing is committed until you confirm.
+# 8. Review the diff, then close the task. Nothing is committed until you confirm.
 git diff
 kcia commit
 ```
@@ -309,9 +307,61 @@ kcia task abort        # deletes the session; the files it wrote stay on disk
 ## Git flow: branching and closing a task
 
 **No wave ever runs `git`.** The guardrails block `checkout -b`, `commit` and `push` for the
-agents, and leave them read-only (`status`, `diff`, `log`). Branching and committing are two
-explicit commands you run, and both stop for your confirmation. That is the point: the run
-ends with the changes in your worktree and the decision to keep them still yours.
+agents, and leave them read-only (`status`, `diff`, `log`). Branching is automatic and
+committing waits for you — the run ends with the changes in your worktree and the decision
+to keep them still yours.
+
+### The branching model is decided once, at `kcia init`
+
+There are two, and you pick between them the first time you initialize a repository:
+
+```
+Git flow
+  Found `main`, `develop` in this repository (local and remote).
+
+  1. Git flow — each task opens its own branch off `develop`
+  2. No git flow — each task is worked on the current branch (`master`)
+
+  Which one? [1]:
+  Main branch [main]:
+  Development branch [develop]:
+```
+
+kcia reads the real branches first — local **and** remote — so `main`/`master` and
+`develop`/`development`/`dev` come pre-filled and you usually just press Enter. It only
+really asks when the repository is ambiguous (both `main` and `master` exist) or has neither.
+
+**After that, nothing ever asks again.** `kcia wave run` opens the task's branch by itself
+and says so in one line:
+
+```
+Git flow: created `feature/IP-116-corrige-el-overflow` from `develop`.
+```
+
+With option 2 it says nothing and works on the branch you are standing on. To change your
+mind, edit the config — that is the only place the decision lives:
+
+```bash
+kcia branch config          # show it, and the path to the file
+```
+
+```yaml
+# .ai/local/git.yaml
+schema_version: 1
+flow: gitflow               # or current-branch
+main_branch: main
+develop_branch: develop
+base_branch: develop        # new branches start here
+```
+
+Non-interactive (`kcia init --yes`, CI) never blocks: git flow goes on when the repository
+already has a development branch, off otherwise. `--gitflow` / `--no-gitflow`,
+`--main-branch` and `--develop-branch` decide it outright.
+
+The automatic branch is opened **once per task**, right before the first wave runs, and it
+never moves you against your will: if the name is taken, if the base branch is gone, or if
+you have wandered onto another branch, it says so and leaves the run on the branch you are
+on. Failing to branch is never a reason to refuse to do the work.
 
 ### What kcia needs to reach *your* git, per project
 
@@ -322,14 +372,17 @@ kcia and `git push` from your shell do the same thing. Concretely, per project y
 
 | For | Requirement |
 |---|---|
-| `kcia branch start`, `kcia commit` | a git worktree (`git init` / a clone) and `user.name` + `user.email` set |
+| automatic branching, `kcia branch start`, `kcia commit` | a git worktree (`git init` / a clone) and `user.name` + `user.email` set |
 | `kcia commit --push` | a remote (`git remote add origin <url>`) your git can already authenticate to |
 | `kcia commit --pr` | the above, plus `gh` installed and `gh auth login` done once |
 
 kcia stores no token and reads no credential. `kcia doctor` reports the branch, the detected
 base branch and whether a remote exists.
 
-### Starting the branch
+### Starting the branch by hand
+
+`kcia wave run` does this for you under git flow. The command stays for the times you want
+a branch before starting the pipeline, or a different name than the one derived from the task:
 
 ```bash
 kcia branch start                    # name and type come from the active task
@@ -346,15 +399,13 @@ fix/overflow-en-el-header            # no ticket: no key in the name
 docs/IP-200-jira-guide
 ```
 
-**The base branch is asked for, never guessed.** It is the one thing the worktree cannot
-tell us — a repo that merges into `develop` looks identical to one that merges into `main`.
-The rule:
+**The base branch comes from the config**, the one `kcia init` wrote. Only when a repository
+was never configured does `branch start` fall back to reading the branches itself:
 
-1. An answer already recorded in `.ai/local/git.yaml` is reused.
-2. If you are **on** `develop` / `main` / `master`, that is the base.
-3. If exactly one of those exists in the repo, that is the base.
-4. Otherwise — several conventions coexist, or none does and you are on a feature branch —
-   kcia asks, offering the current branch and each convention it found:
+1. If you are **on** `develop` / `main` / `master`, that is the base.
+2. If exactly one of those exists in the repo, that is the base.
+3. Otherwise — several conventions coexist, or none does and you are on a feature branch —
+   it asks, offering the current branch and each convention it found:
 
 ```
 Cannot tell which branch to start from — the current branch is not a base branch
@@ -367,8 +418,8 @@ and the repository has more than one candidate.
 Start from which branch? (number, or type a branch name) [1]:
 ```
 
-The answer is remembered for that repository, so it is asked once. Off a TTY (CI) it does
-not guess: it exits and tells you to pass `--base`.
+The answer is written to the same config, so it is asked once. Off a TTY (CI) it does not
+guess: it exits and tells you to pass `--base`.
 
 ### Closing the task
 

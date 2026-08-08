@@ -39,13 +39,19 @@ class _Report:
 
 def _report_git_flow(report: "_Report", repo: Path) -> None:
     """Whether `kcia branch start` knows where to branch from, and if a remote exists."""
-    from kcia.git.flow import detect_base_branch
+    from kcia.git.flow import detect_base_branch, load_flow
     from kcia.git.repo import GitError, current_branch, is_git_repo, remotes
 
     if not is_git_repo(repo):
         report.line(WARN, "not a git worktree", "`kcia branch` and `kcia commit` need one.")
         return
     try:
+        flow = load_flow(repo)
+        report.line(
+            OK if flow.configured else WARN,
+            f"git flow: {flow.describe()}" if flow.configured else "git flow: not configured",
+            None if flow.configured else "Run `kcia init` to decide the branching model.",
+        )
         detected = detect_base_branch(repo)
         report.line(OK, f"branch {current_branch(repo)}")
         report.line(

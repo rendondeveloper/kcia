@@ -109,7 +109,7 @@ def test_cli_refuses_to_guess_the_base_without_a_tty(repo: Path, monkeypatch) ->
 def test_cli_asks_and_remembers_the_base(repo: Path, monkeypatch) -> None:
     from typer.testing import CliRunner
 
-    from kcia.git.flow import load_git_config
+    from kcia.git.flow import load_flow
     from kcia.main import app
 
     git(repo, "branch", "develop")
@@ -119,7 +119,7 @@ def test_cli_asks_and_remembers_the_base(repo: Path, monkeypatch) -> None:
     result = CliRunner().invoke(app, ["branch", "start", "add a loader"], input="1\ny\n")
     assert result.exit_code == 0, result.output
     assert "1. develop" in result.output
-    assert load_git_config(repo)["base_branch"] == "develop"
+    assert load_flow(repo).base_branch == "develop"
 
 
 def test_slug_is_bounded() -> None:

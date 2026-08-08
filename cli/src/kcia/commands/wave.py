@@ -10,6 +10,7 @@ import typer
 
 from kcia.cancel import interruptible
 from kcia.config import resolve_agents
+from kcia.git.autobranch import ensure_task_branch
 from kcia.paths import find_repo_root
 from kcia.usage import format_duration, format_tokens
 from kcia.waves.definitions import get_wave, load_waves
@@ -205,6 +206,11 @@ def _execute(
             typer.echo(f"  - {problem}")
         typer.echo("Run `kcia doctor` for the full picture.")
         raise typer.Exit(code=1)
+
+    # The branching model was decided at `kcia init`; here it is only applied.
+    outcome = ensure_task_branch(session)
+    if outcome is not None:
+        typer.echo(outcome.message)
 
     reporter = _ProgressReporter(enabled=not quiet)
     run_started = time.monotonic()

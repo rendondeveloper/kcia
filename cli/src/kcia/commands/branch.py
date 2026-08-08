@@ -13,6 +13,8 @@ from kcia.git.flow import (
     BaseBranch,
     branch_name,
     detect_base_branch,
+    git_config_path,
+    load_flow,
     save_base_branch,
 )
 from kcia.git.repo import (
@@ -96,6 +98,26 @@ def resolve_base(repo: Path, explicit: str | None, *, assume_yes: bool) -> str:
     save_base_branch(repo, chosen)
     typer.echo(f"Remembered `{chosen}` as this repository's base branch.")
     return chosen
+
+
+@app.command("config")
+def branch_config() -> None:
+    """Show the branching model `kcia init` recorded, and where to change it."""
+    repo = load_repo()
+    flow = load_flow(repo)
+    if not flow.configured:
+        typer.echo("Not configured yet — run `kcia init` to decide the branching model.")
+        typer.echo("Until then `kcia wave run` leaves you on the current branch.")
+        return
+    typer.echo(flow.describe() + ".")
+    if flow.main_branch:
+        typer.echo(f"  main:    {flow.main_branch}")
+    if flow.develop_branch:
+        typer.echo(f"  develop: {flow.develop_branch}")
+    if flow.base_branch:
+        typer.echo(f"  base:    {flow.base_branch}")
+    typer.echo("")
+    typer.echo(f"Edit {git_config_path(repo)} to change it.")
 
 
 @app.command("base")
