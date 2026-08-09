@@ -1,0 +1,31 @@
+schema_version: 1
+providers:
+  claude:
+    display_name: "Claude Code"
+    executable: claude
+    install_hint: "npm i -g @anthropic-ai/claude-code  o  brew install --cask claude-code"
+    auth: subscription
+    auth_hint: "Ejecuta `claude` y completa el login."
+    models:
+      - { id: claude-opus-5, tier: max, best_for: [planning, complex-implementation] }
+      - { id: claude-sonnet-5, tier: balanced, best_for: [implementation, review] }
+      - { id: claude-haiku-4-5, tier: fast, best_for: [documentation, pr-preparation] }
+    default_model: claude-sonnet-5
+  cursor:
+    display_name: "Cursor"
+    executable: cursor-agent
+    install_hint: "Instala Cursor y habilita el CLI desde la paleta de comandos."
+    auth: subscription
+    auth_hint: "Inicia sesión en Cursor."
+    # Ids verificados con `cursor-agent --list-models`. Cursor usa ids propios
+    # (con sufijo de esfuerzo), no los de la API de Anthropic: `claude-sonnet-5`
+    # a secas NO existe aquí. Lista curada, no exhaustiva.
+    models:
+      - { id: auto, tier: balanced, best_for: [general, cost-control] }
+      - { id: composer-2.5, tier: fast, best_for: [implementation, refactor] }
+      - { id: composer-2.5-fast, tier: fast, best_for: [documentation] }
+      - { id: claude-opus-5-thinking-high, tier: max, best_for: [planning, complex-implementation] }
+      - { id: claude-sonnet-5-thinking-high, tier: balanced, best_for: [implementation, review] }
+      - { id: gpt-5.3-codex, tier: max, best_for: [implementation] }
+      - { id: gemini-3.5-flash, tier: fast, best_for: [documentation] }
+    default_model: auto

@@ -1,0 +1,3 @@
+name: dart_server_fixture
+dependencies:
+  dart_frog: ^1.0.0

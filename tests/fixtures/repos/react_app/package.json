@@ -1,0 +1,6 @@
+{
+  "name": "react_fixture",
+  "dependencies": {
+    "react": "^18.0.0"
+  }
+}

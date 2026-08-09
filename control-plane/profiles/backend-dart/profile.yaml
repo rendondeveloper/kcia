@@ -1,0 +1,70 @@
+schema_version: 2
+id: backend-dart
+display_name: "Backend Dart"
+description: "Servicios backend en Dart puro (dart_frog, shelf, serverpod)."
+abstract: false
+extends: _dart-core
+detect:
+  - when:
+      all:
+        - file_exists: "pubspec.yaml"
+        - yaml_absent: { file: "pubspec.yaml", path: "dependencies.flutter" }
+    confidence: high
+    evidence: "pubspec.yaml sin dependencia del SDK de Flutter"
+  - when:
+      all:
+        - file_exists: "pubspec.yaml"
+        - yaml_absent: { file: "pubspec.yaml", path: "dependencies.flutter" }
+        - any:
+            - glob_exists: "bin/*.dart"
+            - yaml_any_key:
+                file: "pubspec.yaml"
+                path: "dependencies"
+                keys: [dart_frog, shelf, serverpod, grpc]
+    confidence: medium
+    evidence: "Punto de entrada bin/ o dependencias de servidor"
+commands:
+  install: "dart pub get"
+  test: "dart test"
+  lint: "dart analyze"
+  verify: "dart test && dart analyze"
+  build: "dart compile exe bin/server.dart"
+  codegen: "dart run build_runner build --delete-conflicting-outputs"
+command_overrides:
+  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
+  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  - when:
+      any:
+        - file_exists: ".fvmrc"
+        - file_exists: ".fvm/fvm_config.json"
+    commands:
+      install: "fvm dart pub get"
+      test: "fvm dart test"
+      lint: "fvm dart analyze"
+      verify: "fvm dart test && fvm dart analyze"
+      build: "fvm dart compile exe bin/server.dart"
+      codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
+  - when: { file_exists: "melos.yaml" }
+    commands:
+      test: "fvm dart run melos run test:all"
+      verify: "fvm dart run melos run verify"
+references:
+  - { path: references/api.md, tags: [api, architecture] }
+  - { path: references/data.md, tags: [data, architecture] }
+workflows:
+  - workflows/feature.md
+  - workflows/bugfix.md
+  - workflows/refactor.md
+  - workflows/pr-review.md
+rules:
+  forbid_business_logic_in_handlers: true
+  require_structured_logging: true
+adapters:
+  cursor:
+    globs: ["**/*.dart"]
+  claude:
+    nested_file: true
+validation:
+  required_commands: [test, lint]
+  optional_commands: [build]
+  retry_limit: 3

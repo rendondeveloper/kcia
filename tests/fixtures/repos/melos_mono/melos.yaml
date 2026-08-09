@@ -1,0 +1,6 @@
+name: melos_mono_fixture
+packages:
+  - packages/app_mobile/**
+  - packages/app_web/**
+  - packages/api/**
+  - packages/shared/**

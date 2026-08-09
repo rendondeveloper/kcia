@@ -1,0 +1,49 @@
+schema_version: 2
+id: web-flutter
+display_name: "Web Flutter"
+description: "Flutter apps targeting the web platform."
+abstract: false
+extends: _dart-core
+detect:
+  - when:
+      all:
+        - file_exists: "pubspec.yaml"
+        - yaml_present: { file: "pubspec.yaml", path: "dependencies.flutter" }
+        - dir_exists: "web"
+    confidence: high
+    evidence: "pubspec.yaml con SDK de Flutter y directorio web/"
+commands:
+  install: "flutter pub get"
+  test: "flutter test"
+  lint: "flutter analyze"
+  verify: "flutter test && flutter analyze"
+command_overrides:
+  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
+  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  - when:
+      any:
+        - file_exists: ".fvmrc"
+        - file_exists: ".fvm/fvm_config.json"
+    commands:
+      install: "fvm flutter pub get"
+      test: "fvm flutter test"
+      lint: "fvm flutter analyze"
+      verify: "fvm flutter test && fvm flutter analyze"
+references:
+  - { path: references/web.md, tags: [web, coding] }
+workflows:
+  - workflows/feature.md
+  - workflows/bugfix.md
+  - workflows/refactor.md
+  - workflows/pr-review.md
+rules:
+  require_responsive_layouts: true
+  require_web_accessibility: true
+adapters:
+  cursor:
+    globs: ["**/*.dart"]
+  claude:
+    nested_file: true
+validation:
+  required_commands: [test, lint]
+  retry_limit: 3

@@ -1,0 +1,24 @@
+Fetch issue `{{ ticket_key }}` from Atlassian using the available MCP tools and
+report it as Markdown. Do not read or modify any repository file.
+
+Output exactly this structure and nothing else:
+
+# {{ ticket_key }} — <summary>
+
+- Type: <issue type>
+- Status: <status>
+- Priority: <priority, or omit the line>
+- Labels: <comma separated, or omit the line>
+
+## Description
+<the issue description, preserving lists and code blocks>
+
+## Acceptance criteria
+<the acceptance criteria if the issue has any, otherwise omit this section>
+
+## Comments
+<only comments that change what must be built; omit the section if none do>
+
+Copy the issue's own wording. Do not summarise, infer requirements, or propose a
+solution — a later step plans the work. If the issue cannot be retrieved, reply
+with one line: `BLOCKED: <what failed>`.

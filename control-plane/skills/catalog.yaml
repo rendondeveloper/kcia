@@ -1,0 +1,40 @@
+schema_version: 1
+
+policy:
+  selection_rules:
+    - "Only catalog skills may be referenced in prompts."
+    - "Skill selection must respect the active profile and wave."
+
+skills:
+  - id: problem-framing
+    version: 1.0.0
+    status: approved
+    purpose: "Summarize the confirmed problem, bounded scope, risks, and unknowns before coding."
+    outputs:
+      - "bounded problem statement"
+      - "affected areas"
+      - "risks and unknowns"
+
+  - id: validation-planning
+    version: 1.0.0
+    status: approved
+    purpose: "Declare profile-specific validation commands and expected evidence."
+    outputs:
+      - "validation plan"
+      - "command list per active profile"
+
+  - id: test-expansion
+    version: 1.0.0
+    status: approved
+    purpose: "Add or extend tests for introduced behavior."
+    outputs:
+      - "test matrix"
+      - "implemented missing tests"
+
+  - id: documentation-update
+    version: 1.0.0
+    status: approved
+    purpose: "Update operational context files with confirmed progress only."
+    outputs:
+      - "updated current.md"
+      - "updated decisions.md or milestones.md when appropriate"

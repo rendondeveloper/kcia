@@ -1,0 +1,1 @@
+# React coding standards (fixture)

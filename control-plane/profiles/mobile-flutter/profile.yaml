@@ -1,0 +1,71 @@
+schema_version: 2
+id: mobile-flutter
+display_name: "Mobile Flutter"
+description: "Flutter apps targeting Android and iOS."
+abstract: false
+extends: _dart-core
+detect:
+  - when:
+      all:
+        - file_exists: "pubspec.yaml"
+        - yaml_present: { file: "pubspec.yaml", path: "dependencies.flutter" }
+        - any:
+            - dir_exists: "android"
+            - dir_exists: "ios"
+    confidence: high
+    evidence: "pubspec.yaml con SDK de Flutter y directorios android/ o ios/"
+commands:
+  install: "flutter pub get"
+  test: "flutter test"
+  lint: "flutter analyze"
+  verify: "flutter test && flutter analyze"
+  codegen: "dart run build_runner build --delete-conflicting-outputs"
+command_overrides:
+  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
+  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  - when:
+      any:
+        - file_exists: ".fvmrc"
+        - file_exists: ".fvm/fvm_config.json"
+    commands:
+      install: "fvm flutter pub get"
+      test: "fvm flutter test"
+      lint: "fvm flutter analyze"
+      verify: "fvm flutter test && fvm flutter analyze"
+      codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
+  # Más específico al final: el último override que casa es el que gana.
+  - when: { file_exists: "melos.yaml" }
+    commands:
+      test: "dart run melos run test:all"
+      verify: "dart run melos run verify"
+  - when:
+      all:
+        - file_exists: "melos.yaml"
+        - any:
+            - file_exists: ".fvmrc"
+            - file_exists: ".fvm/fvm_config.json"
+    commands:
+      test: "fvm dart run melos run test:all"
+      verify: "fvm dart run melos run verify"
+references:
+  - { path: references/accessibility.md, tags: [accessibility, coding] }
+workflows:
+  - workflows/feature.md
+  - workflows/bugfix.md
+  - workflows/refactor.md
+  - workflows/pr-review.md
+rules:
+  keep_business_logic_out_of_widgets: true
+  require_accessibility_semantics: true
+  require_fvm_for_flutter_commands: true
+  require_spacer_over_expanded_for_empty_space: true
+  require_flex_spacing_property_over_sizedbox_gaps: true
+adapters:
+  cursor:
+    globs: ["**/*.dart"]
+  claude:
+    nested_file: true
+validation:
+  required_commands: [test, lint]
+  optional_commands: [build]
+  retry_limit: 3

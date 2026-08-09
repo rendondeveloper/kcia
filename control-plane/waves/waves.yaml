@@ -1,0 +1,60 @@
+schema_version: 1
+budget:
+  max_prompt_tokens: 120000
+  drop_order: [architecture, monorepo, data, api, web, accessibility, testing, validation, coding]
+waves:
+  - id: understanding
+    order: 1
+    agent: planner
+    allow_edits: false
+    writes: [".ai/context/task.md"]
+    requires: []
+    description: "Entender el problema y delimitar el alcance."
+    can_ask_questions: true
+    reference_tags: [coding, monorepo]
+    prompt_template: understanding.md.j2
+
+  - id: analysis
+    order: 2
+    agent: planner
+    allow_edits: false
+    writes: [".ai/context/plan.md"]
+    requires: [understanding]
+    description: "Diseñar la solución y declarar profiles y validación."
+    reference_tags: [coding, architecture, testing, validation, monorepo]
+    prompt_template: analysis.md.j2
+
+  - id: documentation-init
+    order: 3
+    agent: planner
+    allow_edits: true
+    edit_scope: [".ai/**"]
+    writes: [".ai/context/current.md", ".ai/context/decisions.md"]
+    requires: [analysis]
+    reference_tags: []
+    prompt_template: documentation-init.md.j2
+
+  - id: implementation
+    order: 4
+    agent: builder
+    allow_edits: true
+    edit_scope: ["**"]
+    requires: [analysis]
+    validation: required
+    # Primera wave que puede tocar código fuera de `.ai/`: el plan debe quedar
+    # aprobado por una persona antes de continuar.
+    requires_approval: true
+    approval_shows: plan.md
+    description: "Implementar el plan aprobado y validar."
+    reference_tags: [coding, testing, validation, api, data, web, accessibility]
+    prompt_template: implementation.md.j2
+
+  - id: documentation-final
+    order: 5
+    agent: builder
+    allow_edits: true
+    edit_scope: [".ai/**"]
+    writes: [".ai/context/milestones.md"]
+    requires: [implementation]
+    reference_tags: []
+    prompt_template: documentation-final.md.j2

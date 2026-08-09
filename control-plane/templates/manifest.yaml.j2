@@ -1,0 +1,33 @@
+schema_version: 2
+
+project:
+  name: {{ project_name }}
+  default_profile: {{ default_profile }}
+  layout: {{ layout }}
+
+profiles: []
+
+dependencies: []
+
+detection:
+  exclude_dirs: []
+  last_run: null
+
+integrations:
+  jira:
+    enabled: false
+    base_url: null
+    project_keys: []
+  github:
+    enabled: true
+    allow_open_pr: false
+    allow_merge: false
+
+context:
+  auto_update: true
+  requires_active_task: true
+
+control_plane:
+  version: "{{ control_plane_version }}"
+  packs:
+    - { name: kcia-builtin, version: "{{ control_plane_version }}", source: builtin }

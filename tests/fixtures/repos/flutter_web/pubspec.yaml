@@ -1,0 +1,4 @@
+name: flutter_web_fixture
+dependencies:
+  flutter:
+    sdk: flutter

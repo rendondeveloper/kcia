@@ -1,0 +1,32 @@
+schema_version: 2
+id: react-app
+display_name: "React App"
+description: "Frontend React fixture profile."
+abstract: false
+extends: null
+detect:
+  - when:
+      all:
+        - file_exists: "package.json"
+        - json_any_key:
+            file: "package.json"
+            path: "dependencies"
+            keys: [react]
+    confidence: high
+    evidence: "package.json con dependencia react"
+commands:
+  install: "npm install"
+  test: "npm test"
+  lint: "npm run lint"
+  verify: "npm test && npm run lint"
+references:
+  - references/coding.md
+workflows:
+  - workflows/feature.md
+  - workflows/bugfix.md
+  - workflows/refactor.md
+  - workflows/pr-review.md
+rules:
+  require_tests_for_code_changes: true
+validation:
+  required_commands: [test, lint]

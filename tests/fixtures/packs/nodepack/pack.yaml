@@ -1,0 +1,7 @@
+schema_version: 1
+name: nodepack
+version: 1.0.0
+description: "Test pack for React detection"
+kcia_min_version: "0.0.1"
+profiles:
+  - react-app
