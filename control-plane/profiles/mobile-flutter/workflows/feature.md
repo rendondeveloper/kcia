@@ -4,8 +4,10 @@
 
 Each feature follows Clean Architecture with `data`/`domain`/`presentation` layers:
 
+the first packages can adjust if the repository use feature/features/lib etc
+
 ```
-features/feature_example/
+(feature/features/lib)/feature_example/
 ├── feature_example.dart
 ├── data/
 │   ├── data.dart
