@@ -50,7 +50,7 @@ def _report_git_flow(report: "_Report", repo: Path) -> None:
         report.line(
             OK if flow.configured else WARN,
             f"git flow: {flow.describe()}" if flow.configured else "git flow: not configured",
-            None if flow.configured else "Run `kcia start` to decide the branching model.",
+            None if flow.configured else "Run `kcia init` to decide the branching model.",
         )
         detected = detect_base_branch(repo)
         report.line(OK, f"branch {current_branch(repo)}")
@@ -177,7 +177,7 @@ def doctor() -> None:
         report.line(
             OK if manifest.is_file() else WARN,
             f"manifest {'found' if manifest.is_file() else 'missing'}",
-            None if manifest.is_file() else "Run `kcia start` in this repository.",
+            None if manifest.is_file() else "Run `kcia init` in this repository.",
         )
         _report_git_flow(report, repo)
         _report_session_history(report, repo)

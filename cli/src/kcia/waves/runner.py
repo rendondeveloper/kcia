@@ -290,7 +290,7 @@ def run_wave(
         if wave.validation == "required":
             manifest = load_manifest(session.repo_root)
             if manifest is None:
-                raise RuntimeError("manifest required for validation but missing; run `kcia start`")
+                raise RuntimeError("manifest required for validation but missing; run `kcia init`")
             plan = build_validation_plan(
                 session,
                 manifest,

@@ -102,11 +102,11 @@ def resolve_base(repo: Path, explicit: str | None, *, assume_yes: bool) -> str:
 
 @app.command("config")
 def branch_config() -> None:
-    """Show the branching model `kcia start` recorded, and where to change it."""
+    """Show the branching model `kcia init` recorded, and where to change it."""
     repo = load_repo()
     flow = load_flow(repo)
     if not flow.configured:
-        typer.echo("Not configured yet — run `kcia start` to decide the branching model.")
+        typer.echo("Not configured yet — run `kcia init` to decide the branching model.")
         typer.echo("Until then `kcia work` leaves you on the current branch.")
         return
     typer.echo(flow.describe() + ".")

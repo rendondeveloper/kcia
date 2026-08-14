@@ -1,4 +1,4 @@
-"""Git flow: the branching model of a repository, decided once at `kcia start`.
+"""Git flow: the branching model of a repository, decided once at `kcia init`.
 
 Two models, and no third: either every task opens its own branch off a
 development branch, or every task is done on whatever branch you are standing

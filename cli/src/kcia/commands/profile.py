@@ -68,7 +68,7 @@ def profile_explain(path: str) -> None:
     repo_root = find_repo_root() or Path.cwd()
     manifest_path = repo_root / ".ai" / "manifest.yaml"
     if not manifest_path.is_file():
-        typer.echo("No `.ai/manifest.yaml` found. Run `kcia start` first.")
+        typer.echo("No `.ai/manifest.yaml` found. Run `kcia init` first.")
         raise typer.Exit(code=1)
     from kcia.profiles.schema import Manifest
 

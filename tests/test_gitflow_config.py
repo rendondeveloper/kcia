@@ -152,21 +152,21 @@ def test_standing_on_the_wrong_branch_warns_instead_of_moving_you(repo: Path) ->
 
 
 def _init(repo: Path, monkeypatch, *args: str, stdin: str = "") -> str:
-    """Run `kcia start` in-process, pretending there is a terminal when input is given."""
+    """Run `kcia init` in-process, pretending there is a terminal when input is given."""
     from typer.testing import CliRunner
 
     from kcia.main import app
 
     monkeypatch.chdir(repo)
     monkeypatch.setattr("kcia.commands.init.interactive", lambda: bool(stdin))
-    result = CliRunner().invoke(app, ["start", *args], input=stdin)
+    result = CliRunner().invoke(app, ["init", *args], input=stdin)
     assert result.exit_code == 0, result.output
     return result.output
 
 
 @pytest.fixture()
 def project(repo: Path) -> Path:
-    """A repo with something detectable in it, so `kcia start` gets that far."""
+    """A repo with something detectable in it, so `kcia init` gets that far."""
     (repo / "pubspec.yaml").write_text(
         "name: demo\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\n", encoding="utf-8"
     )

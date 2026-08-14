@@ -18,7 +18,7 @@ def _init_scoped_session(tmp_path: Path, scope: list[str] | None = None) -> Sess
     repo = tmp_path / "melos"
     subprocess.run(["cp", "-R", str(MELOS_REPO), str(repo)], check=True)
     subprocess.run(
-        [str(KCIA), "start", "--yes", "--path", str(repo)],
+        [str(KCIA), "init", "--yes", "--path", str(repo)],
         check=True,
         capture_output=True,
     )
@@ -48,7 +48,7 @@ def test_scope_reduces_tokens_vs_all_active_profiles(tmp_path: Path) -> None:
     repo = tmp_path / "melos"
     subprocess.run(["cp", "-R", str(MELOS_REPO), str(repo)], check=True)
     subprocess.run(
-        [str(KCIA), "start", "--yes", "--path", str(repo)],
+        [str(KCIA), "init", "--yes", "--path", str(repo)],
         check=True,
         capture_output=True,
     )

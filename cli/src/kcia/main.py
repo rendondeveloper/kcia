@@ -18,7 +18,7 @@ ROOT_HELP = """kcia: control plane CLI for development agents
 
 Common commands:
 
-  kcia start
+  kcia init
   kcia profile list
   kcia agent show
   kcia work "fix the overflow"
@@ -31,7 +31,7 @@ Common commands:
 
 app = typer.Typer(help=ROOT_HELP, no_args_is_help=True)
 
-app.command("start", help="Initialize `.ai/` and generated adapters in the current repository.")(init)
+app.command("init", help="Initialize `.ai/` and generated adapters in the current repository.")(init)
 app.add_typer(work_app, name="work")
 app.add_typer(agent_app, name="agent")
 app.add_typer(profile_app, name="profile")

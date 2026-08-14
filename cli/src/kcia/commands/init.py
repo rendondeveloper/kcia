@@ -29,7 +29,7 @@ from kcia.project_index import build_project_facts
 from kcia.render import render_template
 
 # `.ai/local/`, `.ai/cache/`, `.ai/generated/`, `.ai/context/`, `.ai/manifest.yaml`,
-# and `.ai/mcp.yaml` are regenerable from `kcia start` / `kcia work` / `kcia mcp`,
+# and `.ai/mcp.yaml` are regenerable from `kcia init` / `kcia work` / `kcia mcp`,
 # so none of them belong in the project's history. `.ai/history/` is the opposite:
 # it is the durable session log (`kcia session log`) and is meant to be committed,
 # so it is deliberately left out of this list.
@@ -154,7 +154,7 @@ def _configure_git_flow(
     typer.echo("")
     typer.echo("Git flow")
     if not is_git_repo(repo_root):
-        typer.echo("  Not a git worktree yet, so branching is off. Re-run `kcia start` after")
+        typer.echo("  Not a git worktree yet, so branching is off. Re-run `kcia init` after")
         typer.echo("  `git init` to turn it on.")
         return
 

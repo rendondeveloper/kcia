@@ -36,7 +36,7 @@ def test_melos_repo_map_lists_packages(melos_session) -> None:
 def test_single_package_layout(tmp_path: Path) -> None:
     repo = tmp_path / "dart"
     shutil.copytree(DART_SERVER, repo)
-    subprocess.run([str(KCIA), "start", "--yes", "--path", str(repo)], check=True, capture_output=True)
+    subprocess.run([str(KCIA), "init", "--yes", "--path", str(repo)], check=True, capture_output=True)
     manifest = Manifest.model_validate(
         __import__("yaml").safe_load((repo / ".ai" / "manifest.yaml").read_text())
     )

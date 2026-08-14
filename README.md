@@ -4,7 +4,7 @@
 structured, auditable pipeline — without calling any LLM API directly.
 
 You install kcia **once** on your machine. Each project only gets a `.ai/` directory
-(gitignored) when you run `kcia start`.
+(gitignored) when you run `kcia init`.
 
 ---
 
@@ -25,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/rendondeveloper/kcia/master/scripts
 # 2. Check the machine: Python, git, provider CLIs, logins.
 kcia doctor
 
-# 3. Choose who runs the waves. Do this BEFORE `kcia start`.
+# 3. Choose who runs the waves. Do this BEFORE `kcia init`.
 kcia agent models                                    # what each provider offers
 kcia agent set planner claude --model claude-opus-5
 kcia agent set builder cursor --model composer-2.5
@@ -35,7 +35,7 @@ kcia agent show
 cd /path/to/your/project
 
 # 4. Detect technologies, write the manifest, generate adapters, pick the git flow.
-kcia start                                            # idempotent; rerun any time
+kcia init                                            # idempotent; rerun any time
 
 # ── Once per task ───────────────────────────────────────────────────────────
 # 5. Start a task — from a prompt, or from a Jira issue.
@@ -140,9 +140,9 @@ rc and tells you to `source` it.
 
 ### 3. Choose your agents
 
-The agents are what actually run every wave, and they are *not* part of `kcia start`. Skip
+The agents are what actually run every wave, and they are *not* part of `kcia init`. Skip
 this step and the pipeline silently falls back to catalog defaults — you can burn a full run
-on a model you never chose. `kcia start` closes by printing the agents it will use, so check
+on a model you never chose. `kcia init` closes by printing the agents it will use, so check
 that line before starting a task.
 
 ```bash
@@ -188,11 +188,11 @@ Note that `.ai/local/` is gitignored, so a repo-scoped choice is **yours on this
 — it does not travel with the repository. There is currently no committed, team-wide way to
 pin models for a project; each person runs the `--scope repo` command in their own clone.
 
-### 4. `kcia start` — set up the repository
+### 4. `kcia init` — set up the repository
 
 ```bash
 cd /path/to/your/project
-kcia start
+kcia init
 ```
 
 It writes `.ai/manifest.yaml`, composed profile bundles, provider adapters (`CLAUDE.md`,
@@ -253,7 +253,7 @@ develop_branch: develop
 base_branch: develop        # new branches start here
 ```
 
-Non-interactive (`kcia start --yes`, CI) never blocks: git flow goes on when the repository
+Non-interactive (`kcia init --yes`, CI) never blocks: git flow goes on when the repository
 already has a development branch, off otherwise.
 
 #### What `start` puts in your project
@@ -268,13 +268,13 @@ already has a development branch, off otherwise.
 | `.cursor/rules/NN-<id>.mdc` | one Cursor rule per profile, with `globs` scoped to that profile's roots |
 
 Only `.ai/local/`, `.ai/cache/` and `.ai/generated/` are gitignored — those are pure output,
-regenerable by rerunning `kcia start` any time. `manifest.yaml`, `context/project.md` and
+regenerable by rerunning `kcia init` any time. `manifest.yaml`, `context/project.md` and
 [`history/sessions.jsonl`](#8-session-history) are meant to be committed: the manifest and
 `project.md` so the team shares the same detected profiles and project facts, and the session
 log because it is the durable record `kcia session log` writes to. `project.md` has one more
 property beyond being tracked: `start` seeds it and then **never overwrites it**, because it is
 the place to add what only you know. See
-[What `kcia start` writes](#2-what-kcia-start-puts-in-your-project) for why it is deliberately
+[What `kcia init` writes](#2-what-kcia-start-puts-in-your-project) for why it is deliberately
 small.
 
 ### 5. Start a task
@@ -508,7 +508,7 @@ fix/overflow-en-el-header            # no ticket: no key in the name
 docs/IP-200-jira-guide
 ```
 
-**The base branch comes from the config**, the one `kcia start` wrote. Only when a repository
+**The base branch comes from the config**, the one `kcia init` wrote. Only when a repository
 was never configured does `branch start` fall back to reading the branches itself:
 
 1. If you are **on** `develop` / `main` / `master`, that is the base.
@@ -565,7 +565,7 @@ kcia session log --title "Add the commit flow" \
 Every entry is one JSON line appended to `.ai/history/sessions.jsonl` — title, summary,
 decisions, the files touched, and the commit SHA when there is one. Unlike the rest of `.ai/`,
 this file **is meant to be committed**: it is the durable record of what changed and why,
-readable by a human or by a future agent looking for context. `kcia start` keeps it out of
+readable by a human or by a future agent looking for context. `kcia init` keeps it out of
 `.gitignore` on purpose, while `.ai/local/`, `.ai/cache/` and `.ai/generated/` stay ignored.
 
 Search runs against a local index at `.ai/local/history.sqlite3`, rebuilt from the JSONL
@@ -676,7 +676,7 @@ integrations:
     project_keys: [PROJ, INFRA]
 ```
 
-Those edits survive `kcia start` — the manifest keeps whatever `integrations` block it
+Those edits survive `kcia init` — the manifest keeps whatever `integrations` block it
 already had. This only controls *classification*: with `project_keys: [PROJ]`, a bare
 `PROJ-123` is read as an issue rather than as prompt text.
 
@@ -763,7 +763,7 @@ If the control plane version changed, regenerate guidance in each project:
 
 ```bash
 cd /path/to/your/project
-kcia start --yes          # idempotent — rewrites only what changed
+kcia init --yes          # idempotent — rewrites only what changed
 ```
 
 Or, if you only need to refresh detection:
@@ -788,7 +788,7 @@ In a project where generated output looks stale:
 ```bash
 cd /path/to/your/project
 rm -rf .ai/generated .ai/cache
-kcia start --yes
+kcia init --yes
 ```
 
 Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours.
@@ -863,7 +863,7 @@ Concretely, kcia:
 | Per-repo state | `<your project>/.ai/` | partly — see below |
 
 Inside a project you work on, **the regenerable output kcia writes is not committed**.
-`kcia start` adds it to that project's `.gitignore` for you:
+`kcia init` adds it to that project's `.gitignore` for you:
 
 ```gitignore
 # kcia — generated, do not commit
@@ -877,7 +877,7 @@ AGENTS.md
 ```
 
 So a teammate cloning your project sees none of the generated adapters or the local index;
-they run `kcia start` once and get their own. `.ai/manifest.yaml`, `.ai/context/project.md`
+they run `kcia init` once and get their own. `.ai/manifest.yaml`, `.ai/context/project.md`
 and `.ai/history/sessions.jsonl` are deliberately **not** in that list — the manifest and
 `project.md` so the whole team detects the same profiles and shares the same project facts,
 and the session log (see [Session history](#8-session-history)) because it is meant to be a
@@ -925,7 +925,7 @@ flowchart TD
 ```
 your project/          ~/tools/kcia/              provider CLI
 ─────────────          ─────────────              ────────────
-kcia start         →    detect + control-plane  →  (no model yet)
+kcia init         →    detect + control-plane  →  (no model yet)
 kcia work        →    session.json
 kcia work         →    compose prompt        →    claude / cursor-agent
                        write prompt.md            ↓
@@ -937,7 +937,7 @@ kcia work         →    compose prompt        →    claude / cursor-agent
 ### 1. Profiles decide which guidance applies where
 
 A **profile** is a data package for one technology: detection rules, shell commands,
-coding references, and boolean rules. `kcia start` runs detection over the repository and
+coding references, and boolean rules. `kcia init` runs detection over the repository and
 records the result in `.ai/manifest.yaml`, mapping each profile to the paths it owns:
 
 ```yaml
@@ -967,7 +967,7 @@ detect:
     evidence: "pubspec.yaml with no Flutter SDK dependency"
 ```
 
-### 2. What `kcia start` puts in your project
+### 2. What `kcia init` puts in your project
 
 The table is in [step 4](#what-start-puts-in-your-project). What deserves explaining is
 `project.md`, the one file `start` seeds and then never overwrites: it holds the facts it can
@@ -1204,7 +1204,7 @@ Being honest about what the code does not yet do:
 
 | Area | Commands / features |
 |---|---|
-| Project setup | `kcia start` — detection, manifest, bundles, adapters, gitignore |
+| Project setup | `kcia init` — detection, manifest, bundles, adapters, gitignore |
 | Profiles | `profile list/show/detect/validate/scaffold`, inheritance, packs, resolution |
 | Agents | `agent set/show/swap` — Claude and Cursor adapters |
 | Tasks | `task init/show/fetch/answer/abort` — `--scope` for path-limited profiles, Jira issues fetched into context |

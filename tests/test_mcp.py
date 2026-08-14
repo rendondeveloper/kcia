@@ -155,7 +155,7 @@ def test_run_wave_gives_the_planner_its_servers_and_the_builder_none(tmp_path: P
     shutil.copytree(root / "tests" / "fixtures" / "repos" / "melos_mono", repo)
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     subprocess.run(
-        [str(root / ".venv" / "bin" / "kcia"), "start", "--yes", "--path", str(repo)],
+        [str(root / ".venv" / "bin" / "kcia"), "init", "--yes", "--path", str(repo)],
         check=True,
         capture_output=True,
     )
