@@ -39,6 +39,8 @@ GITIGNORE_ENTRIES = (
     ".ai/local/",
     ".ai/cache/",
     ".ai/generated/",
+    # Local repo-scoped profiles: shared via `kcia profile add`, not via git.
+    ".ai/profiles/",
     "CLAUDE.md",
     "AGENTS.md",
     ".cursor/rules/",

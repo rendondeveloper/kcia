@@ -267,10 +267,15 @@ already has a development branch, off otherwise.
 | `CLAUDE.md`, `AGENTS.md` | adapters listing active profiles and authority order |
 | `.cursor/rules/NN-<id>.mdc` | one Cursor rule per profile, with `globs` scoped to that profile's roots |
 
-All of it is gitignored and regenerable — rerun `kcia init` any time. The one exception is
-`project.md`: `init` seeds it and then **never overwrites it**, because it is the place to
-add what only you know. See [What `kcia init` writes](#2-what-kcia-init-puts-in-your-project)
-for why it is deliberately small.
+Only `.ai/local/`, `.ai/cache/` and `.ai/generated/` are gitignored — those are pure output,
+regenerable by rerunning `kcia init` any time. `manifest.yaml`, `context/project.md` and
+[`history/sessions.jsonl`](#8-session-history) are meant to be committed: the manifest and
+`project.md` so the team shares the same detected profiles and project facts, and the session
+log because it is the durable record `kcia session log` writes to. `project.md` has one more
+property beyond being tracked: `init` seeds it and then **never overwrites it**, because it is
+the place to add what only you know. See
+[What `kcia init` writes](#2-what-kcia-init-puts-in-your-project) for why it is deliberately
+small.
 
 ### 5. Start a task
 
@@ -534,6 +539,39 @@ kcia and `git push` from your shell do the same thing. Concretely, per project y
 
 kcia stores no token and reads no credential. `kcia doctor` reports the branch, the detected
 base branch and whether a remote exists.
+
+### 8. Session history
+
+`kcia commit` prints a reminder, but logging is a separate, explicit step — a session can be
+worth recording before you have anything to commit at all:
+
+```bash
+kcia session log --title "Add the commit flow" \
+  --decision "Two commits: plan first, then code" \
+  --commit $(git rev-parse --short HEAD)
+```
+
+**Variants**
+
+| Command | What it does |
+|---|---|
+| `kcia session log --title "…"` | append one entry; files/branch are read from git if `--file` is omitted |
+| `kcia session log --summary "…" --decision "…"` (repeatable) | record the plan and the decisions behind it |
+| `kcia session list` | the most recent entries |
+| `kcia session search "<query>"` | full-text search when available, substring match otherwise |
+| `kcia session show <id>` | the full entry, as JSON |
+| `kcia session reindex` | rebuild the local search index from the log |
+
+Every entry is one JSON line appended to `.ai/history/sessions.jsonl` — title, summary,
+decisions, the files touched, and the commit SHA when there is one. Unlike the rest of `.ai/`,
+this file **is meant to be committed**: it is the durable record of what changed and why,
+readable by a human or by a future agent looking for context. `kcia init` keeps it out of
+`.gitignore` on purpose, while `.ai/local/`, `.ai/cache/` and `.ai/generated/` stay ignored.
+
+Search runs against a local index at `.ai/local/history.sqlite3`, rebuilt from the JSONL
+whenever it falls behind — safe to delete any time. It uses SQLite's FTS5 extension when the
+Python running kcia has it compiled in, and falls back to a plain substring search otherwise;
+`kcia doctor` reports which one is active.
 
 ---
 
@@ -819,23 +857,30 @@ Concretely, kcia:
 | Installed profile packs | `~/.local/share/kcia/packs/` | no |
 | Per-repo state | `<your project>/.ai/` | partly — see below |
 
-Inside a project you work on, **nothing kcia writes is committed**. `kcia init` adds it
-all to that project's `.gitignore` for you:
+Inside a project you work on, **the regenerable output kcia writes is not committed**.
+`kcia init` adds it to that project's `.gitignore` for you:
 
 ```gitignore
 # kcia — generated, do not commit
-.ai/
+.ai/local/
+.ai/cache/
+.ai/generated/
+.ai/profiles/
 CLAUDE.md
 AGENTS.md
 .cursor/rules/
 ```
 
-So a teammate cloning your project sees no kcia files at all; they run `kcia init` once
-and get their own. Nothing to configure, nothing to keep in sync by hand.
+So a teammate cloning your project sees none of the generated adapters or the local index;
+they run `kcia init` once and get their own. `.ai/manifest.yaml`, `.ai/context/project.md`
+and `.ai/history/sessions.jsonl` are deliberately **not** in that list — the manifest and
+`project.md` so the whole team detects the same profiles and shares the same project facts,
+and the session log (see [Session history](#8-session-history)) because it is meant to be a
+durable, shared record.
 
-This includes `.ai/profiles/`. Profiles you write there are local to your working copy
-and do not travel with the project — to share a profile with your team, publish it as a
-profile pack and install it with `kcia profile add`.
+This includes `.ai/profiles/`, which lives under the gitignored side. Profiles you write
+there are local to your working copy and do not travel with the project — to share a profile
+with your team, publish it as a profile pack and install it with `kcia profile add`.
 
 Nothing from kcia's own dependency tree is installed into your project, and your project
 needs no Python.
