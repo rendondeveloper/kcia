@@ -13,9 +13,25 @@ from kcia.paths import find_repo_root
 
 app = typer.Typer(help="Record and search durable session history for this repo.", no_args_is_help=True)
 
+# Session history is a shared, durable record: every entry must be in
+# English so it stays searchable and consistent regardless of which agent or
+# human wrote it. This check is a deliberate, permanent policy, not a
+# convenience default — it is not meant to be relaxed or made configurable.
+_NON_ENGLISH_CHARS = set("ñÑ¿¡")
+
 
 def _repo_root() -> Path:
     return find_repo_root() or Path.cwd()
+
+
+def _reject_non_english(*texts: str) -> None:
+    for text in texts:
+        if any(char in _NON_ENGLISH_CHARS for char in text):
+            typer.echo(
+                "Session history must be written in English "
+                f"(found non-English characters in: {text!r})."
+            )
+            raise typer.Exit(code=1)
 
 
 def _parse_file(raw: str) -> dict[str, str]:
@@ -39,6 +55,7 @@ def session_log(
     task_id: Optional[str] = typer.Option(None, "--task-id", help="Related kcia task id."),
 ) -> None:
     """Append one entry to `.ai/history/sessions.jsonl` and index it."""
+    _reject_non_english(title, summary, *decision)
     repo_root = _repo_root()
     files = [_parse_file(item) for item in file] if file else None
     try:

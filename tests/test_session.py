@@ -75,3 +75,22 @@ def test_session_show_unknown_id_fails(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(repo)
     result = runner.invoke(app, ["session", "show", "does-not-exist"])
     assert result.exit_code == 1
+
+
+def test_session_log_rejects_non_english_title(tmp_path: Path, monkeypatch) -> None:
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    result = runner.invoke(app, ["session", "log", "--title", "Arreglar el diseño"])
+    assert result.exit_code == 1
+    assert "must be written in English" in result.output
+    assert not (repo / ".ai" / "history" / "sessions.jsonl").exists()
+
+
+def test_session_log_rejects_non_english_decision(tmp_path: Path, monkeypatch) -> None:
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    result = runner.invoke(
+        app, ["session", "log", "--title", "Fix layout", "--decision", "¿Por qué esto?"]
+    )
+    assert result.exit_code == 1
+    assert "must be written in English" in result.output

@@ -51,6 +51,6 @@ A small closed language: combinators `all`/`any`/`not` plus a fixed `_LEAF_PREDI
 
 ## Conventions
 
-- Everything is written in English now: control-plane YAML descriptions/hints, Python code, docstrings, and CLI help text. Match the surrounding file.
+- Everything is written in English now: control-plane YAML descriptions/hints, Python code, docstrings, and CLI help text. Match the surrounding file. This is a **permanent, non-negotiable policy** — do not revert to Spanish (or any other language) anywhere in this repo, including `.ai/history/sessions.jsonl` entries written via `kcia session log`. `commands/session.py` enforces this at the tool level (rejecting `¿¡ñÑ`) as a backstop for any agent, not just the one editing a given file.
 - Commands report failures with `typer.echo(...)` + `raise typer.Exit(code=1)` rather than raising through. `errors.KciaError` exists but is not yet wired into a top-level handler.
 - Version lives in `cli/src/kcia/__init__.py:VERSION` and is asserted by `tests/test_version.py`; `control-plane/VERSION` is a separate, independently versioned artifact.

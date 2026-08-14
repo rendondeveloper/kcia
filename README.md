@@ -573,6 +573,11 @@ whenever it falls behind — safe to delete any time. It uses SQLite's FTS5 exte
 Python running kcia has it compiled in, and falls back to a plain substring search otherwise;
 `kcia doctor` reports which one is active.
 
+**English only, always.** Since this log is shared and durable, `--title`, `--summary` and
+`--decision` must be in English — `kcia session log` rejects Spanish-only characters
+(`¿¡ñÑ`) so the history stays consistent and searchable regardless of who or what wrote a
+given entry. This is a fixed policy, not a per-project setting.
+
 ---
 
 ## MCP servers (Jira)
