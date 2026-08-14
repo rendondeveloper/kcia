@@ -28,10 +28,11 @@ from kcia.profiles.loader import load_registry
 from kcia.project_index import build_project_facts
 from kcia.render import render_template
 
-# `.ai/local/`, `.ai/cache/` and `.ai/generated/` are regenerable from
-# `kcia start`, so none of them belong in the project's history. `.ai/history/`
-# is the opposite: it is the durable session log (`kcia session log`) and is
-# meant to be committed, so it is deliberately left out of this list.
+# `.ai/local/`, `.ai/cache/`, `.ai/generated/`, `.ai/context/`, `.ai/manifest.yaml`,
+# and `.ai/mcp.yaml` are regenerable from `kcia start` / `kcia work` / `kcia mcp`,
+# so none of them belong in the project's history. `.ai/history/` is the opposite:
+# it is the durable session log (`kcia session log`) and is meant to be committed,
+# so it is deliberately left out of this list.
 GIT_CONFIG_FILE = ".ai/local/git.yaml"
 
 GITIGNORE_MARKER = "# kcia — generated, do not commit"
@@ -39,6 +40,9 @@ GITIGNORE_ENTRIES = (
     ".ai/local/",
     ".ai/cache/",
     ".ai/generated/",
+    ".ai/context/",
+    ".ai/manifest.yaml",
+    ".ai/mcp.yaml",
     # Local repo-scoped profiles: shared via `kcia profile add`, not via git.
     ".ai/profiles/",
     "CLAUDE.md",
@@ -455,8 +459,8 @@ def _write_manifest(repo_root: Path, entries: list[dict]) -> list[Path]:
 def _write_context(repo_root: Path, *, layout: str, refresh: bool = False) -> list[Path]:
     templates = control_plane_root() / "templates"
     path = repo_root / ".ai" / "context" / "project.md"
-    # The file is yours once it exists: it is the one place to add what only a
-    # human knows. `--refresh-context` opts back into the generated version.
+    # Skip regeneration when the file already exists; `--refresh-context` forces
+    # a rewrite from the template (discarding local edits).
     if path.is_file() and not refresh:
         return []
 
