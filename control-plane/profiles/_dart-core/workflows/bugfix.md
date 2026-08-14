@@ -1,6 +1,6 @@
 # Workflow: bugfix
 
-1. Reproducir el bug con un test que falle.
-2. Corregir la causa raíz, no solo el síntoma.
-3. Verificar que el test pasa y no hay regresiones.
-4. Ejecutar `verify` antes del handoff.
+1. Reproduce the bug with a failing test.
+2. Fix the root cause, not just the symptom.
+3. Verify the test passes and there are no regressions.
+4. Run `verify` before handoff.

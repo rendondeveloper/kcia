@@ -1,5 +1,5 @@
 # Workflow: refactor (mobile)
 
-1. Extraer widgets reutilizables cuando un `build` supera ~80 líneas.
-2. No mezclar platform channels con lógica de presentación.
-3. Ejecutar tests en el simulador más restrictivo del equipo.
+1. Extract reusable widgets when a `build` exceeds ~80 lines.
+2. Don't mix platform channels with presentation logic.
+3. Run tests on the team's most restrictive simulator.

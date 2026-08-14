@@ -1,4 +1,4 @@
 # Workflow: bugfix (web)
 
-1. Reproducir en navegador con herramientas de desarrollo abiertas.
-2. Distinguir bugs de renderer vs lógica compartida con mobile.
+1. Reproduce in the browser with developer tools open.
+2. Distinguish renderer bugs from logic shared with mobile.

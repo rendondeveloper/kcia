@@ -3,9 +3,9 @@ providers:
   claude:
     display_name: "Claude Code"
     executable: claude
-    install_hint: "npm i -g @anthropic-ai/claude-code  o  brew install --cask claude-code"
+    install_hint: "npm i -g @anthropic-ai/claude-code  or  brew install --cask claude-code"
     auth: subscription
-    auth_hint: "Ejecuta `claude` y completa el login."
+    auth_hint: "Run `claude` and complete the login."
     models:
       - { id: claude-opus-5, tier: max, best_for: [planning, complex-implementation] }
       - { id: claude-sonnet-5, tier: balanced, best_for: [implementation, review] }
@@ -14,12 +14,12 @@ providers:
   cursor:
     display_name: "Cursor"
     executable: cursor-agent
-    install_hint: "Instala Cursor y habilita el CLI desde la paleta de comandos."
+    install_hint: "Install Cursor and enable the CLI from the command palette."
     auth: subscription
-    auth_hint: "Inicia sesión en Cursor."
-    # Ids verificados con `cursor-agent --list-models`. Cursor usa ids propios
-    # (con sufijo de esfuerzo), no los de la API de Anthropic: `claude-sonnet-5`
-    # a secas NO existe aquí. Lista curada, no exhaustiva.
+    auth_hint: "Sign in to Cursor."
+    # Ids verified with `cursor-agent --list-models`. Cursor uses its own ids
+    # (with an effort suffix), not the Anthropic API's: plain `claude-sonnet-5`
+    # does NOT exist here. Curated list, not exhaustive.
     models:
       - { id: auto, tier: balanced, best_for: [general, cost-control] }
       - { id: composer-2.5, tier: fast, best_for: [implementation, refactor] }

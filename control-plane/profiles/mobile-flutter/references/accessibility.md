@@ -1,6 +1,6 @@
-# Accesibilidad móvil
+# Mobile accessibility
 
-- Envuelve controles interactivos con `Semantics` cuando el widget no expone etiqueta clara.
-- Proporciona `semanticLabel` en iconos sin texto visible.
-- Prueba con TalkBack (Android) y VoiceOver (iOS) en flujos críticos.
-- Respeta tamaños táctiles mínimos y contraste de color.
+- Wrap interactive controls with `Semantics` when the widget doesn't expose a clear label.
+- Provide `semanticLabel` on icons without visible text.
+- Test with TalkBack (Android) and VoiceOver (iOS) on critical flows.
+- Respect minimum touch target sizes and color contrast.

@@ -1,8 +1,8 @@
 # Workflow: feature (mobile)
 
-## Estructura de carpetas
+## Folder structure
 
-Cada feature sigue Clean Architecture con capas `data`/`domain`/`presentation`:
+Each feature follows Clean Architecture with `data`/`domain`/`presentation` layers:
 
 ```
 features/feature_example/
@@ -41,14 +41,14 @@ features/feature_example/
         └── feature_example_loaded_view.dart
 ```
 
-## Pasos
+## Steps
 
-1. Diseñar UI responsive a distintos tamaños de pantalla móvil.
-2. Mantener lógica de negocio fuera de widgets. No forzar bloc/cubit ni
-   provider: detectar cuál ya usa el repo (dependencias en `pubspec.yaml`,
-   patrones existentes en `presentation/`) y seguir esa misma solución de
-   state management de forma consistente en el feature nuevo.
-3. Usar `Spacer` para espacio flexible vacío; `Expanded` solo cuando el hijo debe llenar espacio.
-4. Preferir propiedades de spacing del `Flex` (`spacing`) sobre `SizedBox` entre hijos.
-5. Añadir golden tests para pantallas estables cuando el equipo los use.
-6. Ejecutar `fvm flutter test` y `fvm flutter analyze`.
+1. Design UI that's responsive across different mobile screen sizes.
+2. Keep business logic out of widgets. Don't force bloc/cubit or
+   provider: detect which one the repo already uses (dependencies in `pubspec.yaml`,
+   existing patterns in `presentation/`) and follow that same state
+   management solution consistently in the new feature.
+3. Use `Spacer` for flexible empty space; `Expanded` only when the child must fill space.
+4. Prefer `Flex` spacing properties (`spacing`) over `SizedBox` between children.
+5. Add golden tests for stable screens when the team uses them.
+6. Run `fvm flutter test` and `fvm flutter analyze`.

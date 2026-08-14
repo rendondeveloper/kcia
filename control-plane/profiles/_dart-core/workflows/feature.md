@@ -1,7 +1,7 @@
 # Workflow: feature
 
-1. Entender el alcance y los criterios de aceptación.
-2. Diseñar capas afectadas (domain, data, presentation).
-3. Implementar domain primero, luego data, luego UI.
-4. Añadir tests unitarios y de widget según corresponda.
-5. Ejecutar `verify` en el paquete modificado.
+1. Understand the scope and acceptance criteria.
+2. Design the affected layers (domain, data, presentation).
+3. Implement domain first, then data, then UI.
+4. Add unit and widget tests as appropriate.
+5. Run `verify` in the modified package.

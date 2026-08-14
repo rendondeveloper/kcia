@@ -1,18 +1,18 @@
-# Arquitectura
+# Architecture
 
-## Capas
+## Layers
 
-- Respeta clean architecture: presentation → domain → data.
-- La lógica de negocio vive en domain; data implementa contratos del dominio.
-- Presentation (widgets, blocs, controllers) no accede directamente a APIs externas.
+- Follow clean architecture: presentation → domain → data.
+- Business logic lives in domain; data implements the domain's contracts.
+- Presentation (widgets, blocs, controllers) does not access external APIs directly.
 
-## Features y barrels
+## Features and barrels
 
-- Una carpeta por feature con barrel file (`feature.dart`) que exporta la API pública.
-- Cada capa dentro de la feature expone su barrel (`domain.dart`, `data.dart`).
-- No importes implementaciones internas desde otras features.
+- One folder per feature with a barrel file (`feature.dart`) that exports the public API.
+- Each layer within the feature exposes its barrel (`domain.dart`, `data.dart`).
+- Don't import internal implementations from other features.
 
-## Dependencias
+## Dependencies
 
-- Domain no depende de Flutter ni de paquetes de infraestructura.
-- Data puede depender de HTTP, DB y serializers; no de widgets.
+- Domain does not depend on Flutter or infrastructure packages.
+- Data can depend on HTTP, DB, and serializers; not on widgets.

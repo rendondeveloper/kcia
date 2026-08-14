@@ -1,5 +1,5 @@
 # Workflow: bugfix (mobile)
 
-1. Reproducir en dispositivo o emulador del target afectado (iOS/Android).
-2. Añadir test de widget o integración que capture el fallo.
-3. Corregir y verificar en ambas plataformas si el bug es transversal.
+1. Reproduce on the affected target's device or emulator (iOS/Android).
+2. Add a widget or integration test that captures the failure.
+3. Fix and verify on both platforms if the bug is cross-cutting.

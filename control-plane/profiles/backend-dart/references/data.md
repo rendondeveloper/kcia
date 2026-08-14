@@ -1,7 +1,7 @@
-# Datos y persistencia
+# Data and persistence
 
-- Usa transacciones para operaciones que deben ser atómicas.
-- Migraciones versionadas y reversibles cuando el stack lo permita.
-- Connection pooling configurado según entorno.
-- Aislamiento con `Isolate` para CPU-bound fuera del event loop.
-- Manejo de errores: captura en capa data, traduce a fallos de dominio.
+- Use transactions for operations that must be atomic.
+- Versioned and reversible migrations when the stack allows it.
+- Connection pooling configured per environment.
+- Isolate CPU-bound work with `Isolate`, outside the event loop.
+- Error handling: catch in the data layer, translate to domain failures.

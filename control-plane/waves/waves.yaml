@@ -9,7 +9,7 @@ waves:
     allow_edits: false
     writes: [".ai/context/task.md"]
     requires: []
-    description: "Entender el problema y delimitar el alcance."
+    description: "Understand the problem and scope the work."
     can_ask_questions: true
     reference_tags: [coding, monorepo]
     prompt_template: understanding.md.j2
@@ -20,7 +20,7 @@ waves:
     allow_edits: false
     writes: [".ai/context/plan.md"]
     requires: [understanding]
-    description: "Diseñar la solución y declarar profiles y validación."
+    description: "Design the solution and declare profiles and validation."
     reference_tags: [coding, architecture, testing, validation, monorepo]
     prompt_template: analysis.md.j2
 
@@ -41,11 +41,11 @@ waves:
     edit_scope: ["**"]
     requires: [analysis]
     validation: required
-    # Primera wave que puede tocar código fuera de `.ai/`: el plan debe quedar
-    # aprobado por una persona antes de continuar.
+    # First wave that can touch code outside `.ai/`: the plan must be
+    # approved by a person before continuing.
     requires_approval: true
     approval_shows: plan.md
-    description: "Implementar el plan aprobado y validar."
+    description: "Implement the approved plan and validate."
     reference_tags: [coding, testing, validation, api, data, web, accessibility]
     prompt_template: implementation.md.j2
 

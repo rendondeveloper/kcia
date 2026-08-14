@@ -1,11 +1,11 @@
 schema_version: 1
-# Servidores MCP conocidos. Habilitarlos por repositorio con `kcia mcp add <id>`.
+# Known MCP servers. Enable them per repository with `kcia mcp add <id>`.
 #
-# `roles` es el gating: qué agentes pueden ver el servidor. Se aplica de verdad en
-# Claude Code, que acepta `--mcp-config` por invocación; Cursor lee un archivo
-# global del repo, así que ahí la declaración es informativa (ver README).
+# `roles` is the gating: which agents can see the server. It's actually enforced in
+# Claude Code, which accepts `--mcp-config` per invocation; Cursor reads a
+# global repo file, so there the declaration is informational (see README).
 #
-# kcia nunca guarda credenciales: la sesión la abre el CLI del proveedor.
+# kcia never stores credentials: the CLI of the provider opens the session.
 servers:
   atlassian:
     display_name: "Atlassian (Jira + Confluence)"
@@ -13,12 +13,12 @@ servers:
     url: "https://mcp.atlassian.com/v1/sse"
     cloud_only: true
     roles: [planner]
-    description: "Lectura de issues y páginas para entender y planear el trabajo."
-    # Allowlist explícita: sin ella Claude deniega toda llamada MCP en modo
-    # `--print`. Conceder el servidor entero (`mcp__atlassian`) incluiría
-    # createJiraIssue, editJiraIssue, addCommentToJiraIssue y transitionJiraIssue,
-    # que los guardrails prohíben. Enumerar solo lectura convierte esa política
-    # en una restricción real.
+    description: "Read issues and pages to understand and plan the work."
+    # Explicit allowlist: without it Claude denies every MCP call in
+    # `--print` mode. Granting the whole server (`mcp__atlassian`) would include
+    # createJiraIssue, editJiraIssue, addCommentToJiraIssue and transitionJiraIssue,
+    # which the guardrails forbid. Listing read-only tools turns that policy
+    # into a real restriction.
     allowed_tools:
       - mcp__atlassian__atlassianUserInfo
       - mcp__atlassian__getAccessibleAtlassianResources
@@ -37,29 +37,29 @@ servers:
       - mcp__atlassian__getConfluencePageFooterComments
       - mcp__atlassian__searchConfluenceUsingCql
     auth_hint: >-
-      OAuth por navegador. Claude Code: `claude mcp add --transport sse atlassian
-      https://mcp.atlassian.com/v1/sse` y sigue el login. Cursor: `cursor-agent mcp
-      login atlassian`. Requiere Atlassian Cloud; Server/Data Center no lo soporta.
+      Browser OAuth. Claude Code: `claude mcp add --transport sse atlassian
+      https://mcp.atlassian.com/v1/sse` and follow the login. Cursor: `cursor-agent mcp
+      login atlassian`. Requires Atlassian Cloud; Server/Data Center is not supported.
     verify_hint: >-
-      Confirma la URL vigente en la documentación de Atlassian antes de depender de
-      ella: el servidor remoto sigue en evolución y la ruta ha cambiado.
+      Confirm the current URL in Atlassian's documentation before relying on
+      it: the remote server is still evolving and the path has changed before.
 
   github:
     display_name: "GitHub"
     transport: http
     url: "https://api.githubcopilot.com/mcp/"
     roles: [planner]
-    description: "Lectura de issues y pull requests."
+    description: "Read issues and pull requests."
     allowed_tools: [mcp__github]
     auth_hint: >-
       `claude mcp add --transport http github https://api.githubcopilot.com/mcp/`
-      y completa el login. Los guardrails mantienen abrir y mergear PRs deshabilitado.
+      and complete the login. The guardrails keep opening and merging PRs disabled.
 
   sentry:
     display_name: "Sentry"
     transport: http
     url: "https://mcp.sentry.dev/mcp"
     roles: [planner, builder]
-    description: "Consulta de errores en producción al diagnosticar un bug."
+    description: "Look up production errors while diagnosing a bug."
     allowed_tools: [mcp__sentry]
     auth_hint: "`claude mcp add --transport http sentry https://mcp.sentry.dev/mcp`"

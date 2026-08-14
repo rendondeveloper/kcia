@@ -1,4 +1,4 @@
 # Workflow: bugfix (backend)
 
-1. Reproducir con test de integración o unit test del servicio afectado.
-2. Verificar logging y que no se filtran datos sensibles en errores.
+1. Reproduce with an integration test or unit test of the affected service.
+2. Verify logging and that no sensitive data leaks in errors.

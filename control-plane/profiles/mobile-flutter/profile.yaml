@@ -13,7 +13,7 @@ detect:
             - dir_exists: "android"
             - dir_exists: "ios"
     confidence: high
-    evidence: "pubspec.yaml con SDK de Flutter y directorios android/ o ios/"
+    evidence: "pubspec.yaml with Flutter SDK and android/ or ios/ directories"
 commands:
   install: "flutter pub get"
   test: "flutter test"
@@ -21,8 +21,8 @@ commands:
   verify: "flutter test && flutter analyze"
   codegen: "dart run build_runner build --delete-conflicting-outputs"
 command_overrides:
-  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
-  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  # `fvm` only when the repository pins a Flutter version; always assuming it
+  # breaks validation on machines without fvm and in projects that don't use it.
   - when:
       any:
         - file_exists: ".fvmrc"
@@ -33,7 +33,7 @@ command_overrides:
       lint: "fvm flutter analyze"
       verify: "fvm flutter test && fvm flutter analyze"
       codegen: "fvm dart run build_runner build --delete-conflicting-outputs"
-  # Más específico al final: el último override que casa es el que gana.
+  # Most specific last: the last matching override wins.
   - when: { file_exists: "melos.yaml" }
     commands:
       test: "dart run melos run test:all"

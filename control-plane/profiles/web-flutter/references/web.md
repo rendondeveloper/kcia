@@ -2,16 +2,16 @@
 
 ## Layout
 
-- Diseños responsive con `LayoutBuilder` y breakpoints documentados.
-- Prueba en viewports móvil, tablet y desktop.
+- Responsive layouts with `LayoutBuilder` and documented breakpoints.
+- Test on mobile, tablet, and desktop viewports.
 
-## Renderer y rendimiento
+## Renderer and performance
 
-- Considera CanvasKit vs HTML renderer según necesidades de gráficos y tamaño de bundle.
-- Usa deferred loading para features pesadas cuando sea posible.
+- Consider CanvasKit vs HTML renderer depending on graphics needs and bundle size.
+- Use deferred loading for heavy features when possible.
 
-## Web específico
+## Web-specific
 
-- Configura URL strategy (path vs hash) según despliegue.
-- Meta tags y SEO en `web/index.html` para páginas públicas.
-- Accesibilidad web: orden de foco, roles ARIA vía `Semantics`.
+- Configure URL strategy (path vs hash) according to deployment.
+- Meta tags and SEO in `web/index.html` for public pages.
+- Web accessibility: focus order, ARIA roles via `Semantics`.

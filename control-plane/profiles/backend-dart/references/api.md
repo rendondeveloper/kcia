@@ -1,7 +1,7 @@
-# API y handlers
+# API and handlers
 
-- Handlers delgados: validar entrada, delegar a servicios, mapear respuesta.
-- Sin lógica de negocio en handlers ni en funciones de ruta.
-- DTOs con validación explícita en el borde (query, body, headers).
-- Códigos HTTP consistentes y cuerpos de error estructurados.
-- Logging estructurado con correlation id por request.
+- Thin handlers: validate input, delegate to services, map the response.
+- No business logic in handlers or route functions.
+- DTOs with explicit validation at the boundary (query, body, headers).
+- Consistent HTTP status codes and structured error bodies.
+- Structured logging with a correlation id per request.

@@ -11,15 +11,15 @@ detect:
         - yaml_present: { file: "pubspec.yaml", path: "dependencies.flutter" }
         - dir_exists: "web"
     confidence: high
-    evidence: "pubspec.yaml con SDK de Flutter y directorio web/"
+    evidence: "pubspec.yaml with Flutter SDK and web/ directory"
 commands:
   install: "flutter pub get"
   test: "flutter test"
   lint: "flutter analyze"
   verify: "flutter test && flutter analyze"
 command_overrides:
-  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
-  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  # `fvm` only when the repository pins a Flutter version; always assuming it
+  # breaks validation on machines without fvm and in projects that don't use it.
   - when:
       any:
         - file_exists: ".fvmrc"

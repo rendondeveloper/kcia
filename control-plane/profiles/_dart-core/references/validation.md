@@ -1,12 +1,12 @@
-# Validación
+# Validation
 
-## Antes del handoff
+## Before handoff
 
-- Ejecuta `verify` (test + lint) en el root del paquete afectado.
-- Corrige todos los errores de analyzer antes de marcar la tarea completa.
-- Si DCM está disponible en el proyecto, ejecútalo sobre archivos modificados.
+- Run `verify` (test + lint) at the root of the affected package.
+- Fix all analyzer errors before marking the task complete.
+- If DCM is available in the project, run it on modified files.
 
-## Calidad
+## Quality
 
-- Sin secretos ni credenciales en código o fixtures.
-- Texto visible al usuario debe pasar por i18n (`AppLocalizations` o equivalente).
+- No secrets or credentials in code or fixtures.
+- User-visible text must go through i18n (`AppLocalizations` or equivalent).

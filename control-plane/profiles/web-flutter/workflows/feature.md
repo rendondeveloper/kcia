@@ -1,9 +1,9 @@
 # Workflow: feature (web)
 
-1. Definir breakpoints y comportamiento responsive antes de implementar.
-2. Mantener lógica de negocio fuera de widgets. No forzar bloc/cubit ni
-   provider: detectar cuál ya usa el repo (dependencias en `pubspec.yaml`,
-   patrones existentes en `presentation/`) y seguir esa misma solución de
-   state management de forma consistente en el feature nuevo.
-3. Validar en Chrome y al menos un segundo navegador del equipo.
-4. Medir impacto en tamaño de bundle si añades dependencias pesadas.
+1. Define breakpoints and responsive behavior before implementing.
+2. Keep business logic out of widgets. Don't force bloc/cubit or
+   provider: detect which one the repo already uses (dependencies in `pubspec.yaml`,
+   existing patterns in `presentation/`) and follow that same state
+   management solution consistently in the new feature.
+3. Validate in Chrome and at least a second browser used by the team.
+4. Measure impact on bundle size if you add heavy dependencies.

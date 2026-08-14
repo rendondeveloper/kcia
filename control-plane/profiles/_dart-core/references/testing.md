@@ -1,18 +1,18 @@
-# Pruebas
+# Testing
 
-## Estructura
+## Structure
 
-- Organiza tests con patrón AAA: Arrange, Act, Assert.
-- Un concepto por test; nombres que describan el comportamiento esperado.
-- Usa `mocktail` para dobles de prueba; evita mocks manuales frágiles.
+- Organize tests with the AAA pattern: Arrange, Act, Assert.
+- One concept per test; names that describe the expected behavior.
+- Use `mocktail` for test doubles; avoid fragile manual mocks.
 
-## Cobertura
+## Coverage
 
-- Toda lógica de negocio nueva requiere tests unitarios.
-- Cambios en repositorios o datasources requieren tests de integración cuando aplique.
-- No reduzcas cobertura existente sin justificación en el plan.
+- All new business logic requires unit tests.
+- Changes to repositories or datasources require integration tests when applicable.
+- Don't reduce existing coverage without justification in the plan.
 
-## Datos de prueba
+## Test data
 
-- Factories o builders para fixtures repetidos.
-- Evita dependencias de red o disco en unit tests.
+- Factories or builders for repeated fixtures.
+- Avoid network or disk dependencies in unit tests.

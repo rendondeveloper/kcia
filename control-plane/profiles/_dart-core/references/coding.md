@@ -1,29 +1,29 @@
-# Estándares de código Dart
+# Dart coding standards
 
 ## Imports
 
-- Usa imports `package:` con `show` al cruzar límites de capa o feature.
-- Ordena imports: SDK, paquetes externos, paquetes internos, relativos.
-- Evita imports relativos que salgan de la feature actual.
+- Use `package:` imports with `show` when crossing layer or feature boundaries.
+- Order imports: SDK, external packages, internal packages, relative.
+- Avoid relative imports that leave the current feature.
 
 ## Naming
 
-- `PascalCase` para tipos; `camelCase` para miembros y variables.
-- Sufijos descriptivos: `*Repository`, `*DataSource`, `*UseCase`, `*Bloc`.
-- Nombres de archivos en `snake_case.dart`.
+- `PascalCase` for types; `camelCase` for members and variables.
+- Descriptive suffixes: `*Repository`, `*DataSource`, `*UseCase`, `*Bloc`.
+- File names in `snake_case.dart`.
 
-## Complejidad
+## Complexity
 
-- Funciones cortas con una responsabilidad clara.
-- Evita anidamiento profundo; extrae métodos privados.
-- No uses `print` en código de producción; usa logging estructurado.
+- Short functions with a single clear responsibility.
+- Avoid deep nesting; extract private methods.
+- Don't use `print` in production code; use structured logging.
 
-## Modelos
+## Models
 
-- Prefiere `freezed` sobre `Equatable` para modelos inmutables.
-- Serialización JSON con `json_serializable`; no edites archivos `*.g.dart` ni `*.freezed.dart`.
-- Usa clases mapper dedicadas entre modelos de dominio y DTOs.
+- Prefer `freezed` over `Equatable` for immutable models.
+- JSON serialization with `json_serializable`; don't edit `*.g.dart` or `*.freezed.dart` files.
+- Use dedicated mapper classes between domain models and DTOs.
 
-## Control de flujo
+## Control flow
 
-- Siempre usa llaves en `if`, `for` y `while`, incluso en una línea.
+- Always use braces in `if`, `for`, and `while`, even on a single line.

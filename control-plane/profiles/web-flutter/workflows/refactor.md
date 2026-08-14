@@ -1,4 +1,4 @@
 # Workflow: refactor (web)
 
-1. Extraer widgets que dependen de `dart:html` o plugins web-only.
-2. Mantener código compartido libre de imports condicionales innecesarios.
+1. Extract widgets that depend on `dart:html` or web-only plugins.
+2. Keep shared code free of unnecessary conditional imports.

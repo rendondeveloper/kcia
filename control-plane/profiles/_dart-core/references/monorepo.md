@@ -2,11 +2,11 @@
 
 ## Melos
 
-- Si existe `melos.yaml`, usa los scripts del workspace (`melos run test:all`, `melos run verify`).
-- Cambios en paquetes compartidos pueden requerir validar varios paquetes consumidores.
+- If `melos.yaml` exists, use the workspace scripts (`melos run test:all`, `melos run verify`).
+- Changes to shared packages may require validating several consumer packages.
 
-## Paquetes compartidos
+## Shared packages
 
-- Mantén APIs estables en paquetes `shared_*` o `core`.
-- Versiona breaking changes con changelog por paquete.
-- Evita dependencias circulares entre paquetes del workspace.
+- Keep stable APIs in `shared_*` or `core` packages.
+- Version breaking changes with a per-package changelog.
+- Avoid circular dependencies between workspace packages.

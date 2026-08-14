@@ -1,5 +1,5 @@
 # Workflow: PR review (web)
 
-1. Verificar responsive en múltiples anchos.
-2. Comprobar accesibilidad de teclado y lectores de pantalla.
-3. Revisar cambios en `web/` (index.html, manifest, icons).
+1. Verify responsiveness across multiple widths.
+2. Check keyboard and screen reader accessibility.
+3. Review changes in `web/` (index.html, manifest, icons).

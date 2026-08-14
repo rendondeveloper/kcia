@@ -11,8 +11,8 @@ commands:
   verify: "dart test && dart analyze"
   codegen: "dart run build_runner build --delete-conflicting-outputs"
 command_overrides:
-  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
-  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  # `fvm` only when the repository pins a Flutter version; always assuming it
+  # breaks validation on machines without fvm and in projects that don't use it.
   - when:
       any:
         - file_exists: ".fvmrc"

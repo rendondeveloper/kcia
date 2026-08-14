@@ -1,7 +1,7 @@
 schema_version: 2
 id: backend-dart
 display_name: "Backend Dart"
-description: "Servicios backend en Dart puro (dart_frog, shelf, serverpod)."
+description: "Backend services in pure Dart (dart_frog, shelf, serverpod)."
 abstract: false
 extends: _dart-core
 detect:
@@ -10,7 +10,7 @@ detect:
         - file_exists: "pubspec.yaml"
         - yaml_absent: { file: "pubspec.yaml", path: "dependencies.flutter" }
     confidence: high
-    evidence: "pubspec.yaml sin dependencia del SDK de Flutter"
+    evidence: "pubspec.yaml without a dependency on the Flutter SDK"
   - when:
       all:
         - file_exists: "pubspec.yaml"
@@ -22,7 +22,7 @@ detect:
                 path: "dependencies"
                 keys: [dart_frog, shelf, serverpod, grpc]
     confidence: medium
-    evidence: "Punto de entrada bin/ o dependencias de servidor"
+    evidence: "bin/ entry point or server dependencies"
 commands:
   install: "dart pub get"
   test: "dart test"
@@ -31,8 +31,8 @@ commands:
   build: "dart compile exe bin/server.dart"
   codegen: "dart run build_runner build --delete-conflicting-outputs"
 command_overrides:
-  # `fvm` solo cuando el repositorio fija una versión de Flutter; asumirlo siempre
-  # rompe la validación en máquinas sin fvm y en proyectos que no lo usan.
+  # `fvm` only when the repository pins a Flutter version; always assuming it
+  # breaks validation on machines without fvm and in projects that don't use it.
   - when:
       any:
         - file_exists: ".fvmrc"

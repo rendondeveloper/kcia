@@ -51,6 +51,6 @@ A small closed language: combinators `all`/`any`/`not` plus a fixed `_LEAF_PREDI
 
 ## Conventions
 
-- Control-plane YAML descriptions and hints are written in Spanish; Python code, docstrings, and CLI help text are in English. Match the surrounding file.
+- Everything is written in English now: control-plane YAML descriptions/hints, Python code, docstrings, and CLI help text. Match the surrounding file.
 - Commands report failures with `typer.echo(...)` + `raise typer.Exit(code=1)` rather than raising through. `errors.KciaError` exists but is not yet wired into a top-level handler.
 - Version lives in `cli/src/kcia/__init__.py:VERSION` and is asserted by `tests/test_version.py`; `control-plane/VERSION` is a separate, independently versioned artifact.
