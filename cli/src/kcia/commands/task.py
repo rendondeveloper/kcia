@@ -199,7 +199,9 @@ def task_fetch() -> None:
 # the agent or adding context. Kept as a hidden alias so older docs still work.
 @app.command("answer")
 @app.command("inject", hidden=True)
-def task_answer(text: str = typer.Argument(..., help="Answer or extra context.")) -> None:
+def task_answer(
+    text: list[str] = typer.Argument(..., help="Answer or extra context."),
+) -> None:
     """Answer the agent's question, or add context, for the next wave."""
     repo = find_repo_root()
     if repo is None:
@@ -210,7 +212,7 @@ def task_answer(text: str = typer.Argument(..., help="Answer or extra context.")
     except FileNotFoundError as exc:
         typer.echo(str(exc))
         raise typer.Exit(code=1) from exc
-    session.add_injection(text)
+    session.add_injection(" ".join(text))
     typer.echo("Injection recorded.")
 
 
