@@ -47,7 +47,7 @@ A small closed language: combinators `all`/`any`/`not` plus a fixed `_LEAF_PREDI
 
 ### Generated repository state
 
-`kcia start` is meant to produce `.ai/` in the target repo plus provider adapters rendered from `control-plane/templates/` (`render.render_template`, autoescape disabled — these are Markdown/YAML, not HTML). `.ai/local/`, `.ai/cache/`, and `.ai/generated/` are gitignored: treat anything under them as regenerable output, never hand-edited source.
+`kcia init` is meant to produce `.ai/` in the target repo plus provider adapters rendered from `control-plane/templates/` (`render.render_template`, autoescape disabled — these are Markdown/YAML, not HTML). `.ai/local/`, `.ai/cache/`, and `.ai/generated/` are gitignored: treat anything under them as regenerable output, never hand-edited source.
 
 ## Planning workflow
 
@@ -61,6 +61,8 @@ All non-trivial change requests go through a plan file before any code is touche
 6. Only start implementation once the plan in that file is confirmed.
 7. After implementing the plan, bump `VERSION` in `cli/src/kcia/__init__.py`. This is mandatory on every change — no exceptions. Decide major/minor/patch by semver judgment based on what the plan changed (breaking change → major, new capability → minor, fix/internal-only → patch), and record which one was chosen, and why, in the plan file.
 8. Commits made from this workflow must not carry a `Co-Authored-By` trailer for any AI tool (Claude, Cursor, or otherwise). No AI attribution/signature in commit messages.
+9. `git push` (and any upload of changes to a remote) requires the user's explicit confirmation — literally "ok" — after the implementation is done and committed. Never push as an automatic continuation of finishing the plan.
+10. Only stage and commit the files the plan actually changed. Do not sweep in unrelated files that happen to be present in the working tree (`git status`), even if they look related — if something unexpected shows up there, leave it out of the commit and flag it to the user instead of including it.
 
 ## Conventions
 
