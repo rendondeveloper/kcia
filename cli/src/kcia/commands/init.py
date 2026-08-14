@@ -28,13 +28,17 @@ from kcia.profiles.loader import load_registry
 from kcia.project_index import build_project_facts
 from kcia.render import render_template
 
-# Everything kcia generates inside a project is regenerable from `kcia init`,
-# so none of it belongs in the project's history.
+# `.ai/local/`, `.ai/cache/` and `.ai/generated/` are regenerable from
+# `kcia init`, so none of them belong in the project's history. `.ai/history/`
+# is the opposite: it is the durable session log (`kcia session log`) and is
+# meant to be committed, so it is deliberately left out of this list.
 GIT_CONFIG_FILE = ".ai/local/git.yaml"
 
 GITIGNORE_MARKER = "# kcia — generated, do not commit"
 GITIGNORE_ENTRIES = (
-    ".ai/",
+    ".ai/local/",
+    ".ai/cache/",
+    ".ai/generated/",
     "CLAUDE.md",
     "AGENTS.md",
     ".cursor/rules/",
@@ -531,17 +535,37 @@ def _expand_globs(roots: list[str], profile_globs: list[str]) -> list[str]:
 
 
 def _update_gitignore(repo_root: Path) -> list[Path]:
-    """Add every kcia-generated path to the project's .gitignore."""
+    """Keep the kcia-managed block of .gitignore in sync with GITIGNORE_ENTRIES.
+
+    The block is replaced wholesale rather than only appended to, so a stale
+    entry from an earlier kcia version (e.g. a blanket `.ai/` that would have
+    swallowed the git-tracked `.ai/history/`) is dropped on the next run
+    instead of lingering forever.
+    """
     path = repo_root / ".gitignore"
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-    present = {line.strip() for line in existing.splitlines()}
-    missing = [entry for entry in GITIGNORE_ENTRIES if entry not in present]
-    if not missing:
-        return []
 
-    block = "" if not existing or existing.endswith("\n") else "\n"
-    if GITIGNORE_MARKER not in existing:
-        block += f"\n{GITIGNORE_MARKER}\n"
-    block += "".join(f"{entry}\n" for entry in missing)
-    path.write_text(existing + block, encoding="utf-8")
+    if GITIGNORE_MARKER in existing:
+        prefix, _, after = existing.partition(GITIGNORE_MARKER)
+        # The managed block runs until the next blank line or end of file.
+        rest_lines = after.splitlines()
+        cut = len(rest_lines)
+        for line_index, line in enumerate(rest_lines):
+            if line_index > 0 and not line.strip():
+                cut = line_index
+                break
+        suffix = "\n".join(rest_lines[cut:])
+    else:
+        prefix, suffix = existing, ""
+
+    managed_block = f"{GITIGNORE_MARKER}\n" + "".join(f"{entry}\n" for entry in GITIGNORE_ENTRIES)
+
+    content = prefix.rstrip("\n")
+    content += ("\n\n" if content else "") + managed_block
+    if suffix.strip():
+        content += "\n" + suffix.strip("\n") + "\n"
+
+    if content == existing:
+        return []
+    path.write_text(content, encoding="utf-8")
     return [path]

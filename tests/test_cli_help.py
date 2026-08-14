@@ -15,6 +15,7 @@ def test_help_lists_commands() -> None:
         "wave",
         "agent",
         "profile",
+        "session",
         "doctor",
         "ask",
         "sync",

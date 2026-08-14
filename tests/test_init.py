@@ -45,7 +45,7 @@ def test_init_gitignores_everything_it_generates(tmp_path: Path) -> None:
     runner.invoke(app, ["init", "--yes", "--path", str(repo)])
 
     lines = {line.strip() for line in (repo / ".gitignore").read_text().splitlines()}
-    assert {".ai/", "CLAUDE.md", "AGENTS.md", ".cursor/rules/"} <= lines
+    assert {".ai/local/", ".ai/cache/", ".ai/generated/", "CLAUDE.md", "AGENTS.md", ".cursor/rules/"} <= lines
     assert "build/" in lines  # pre-existing entries are preserved
 
 
@@ -56,7 +56,7 @@ def test_init_creates_gitignore_when_absent(tmp_path: Path) -> None:
     runner.invoke(app, ["init", "--yes", "--path", str(repo)])
 
     lines = {line.strip() for line in (repo / ".gitignore").read_text().splitlines()}
-    assert ".ai/" in lines
+    assert ".ai/local/" in lines
 
 
 def test_init_is_idempotent(tmp_path: Path) -> None:

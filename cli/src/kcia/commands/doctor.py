@@ -69,6 +69,19 @@ def _report_git_flow(report: "_Report", repo: Path) -> None:
         report.line(WARN, f"git state unreadable: {exc}")
 
 
+def _report_session_history(report: "_Report", repo: Path) -> None:
+    """Whether `kcia session log`/`search` has anything to work with, and how."""
+    history_file = repo / ".ai" / "history" / "sessions.jsonl"
+    if not history_file.is_file():
+        report.line(WARN, "session history: none logged yet", "Run `kcia session log --title ...`.")
+        return
+    from kcia.history.index import entry_count, uses_fts5
+
+    count = entry_count(repo)
+    mode = "full-text search" if uses_fts5(repo) else "substring search (no FTS5 in this Python)"
+    report.line(OK, f"session history: {count} entr{'y' if count == 1 else 'ies'} ({mode})")
+
+
 def doctor() -> None:
     """Check the toolchain, providers, agents and repository state."""
     report = _Report()
@@ -167,6 +180,7 @@ def doctor() -> None:
             None if manifest.is_file() else "Run `kcia init` in this repository.",
         )
         _report_git_flow(report, repo)
+        _report_session_history(report, repo)
 
     if repo is not None:
         entries = resolve_enabled(repo)

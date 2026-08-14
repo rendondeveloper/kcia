@@ -52,18 +52,18 @@ def test_build_prompt_with_stats_section_names(melos_session) -> None:
 
 def test_understanding_excludes_architecture_reference(melos_session) -> None:
     prompt, _ = build_prompt_with_stats(get_wave("understanding"), melos_session)
-    assert "Respeta clean architecture" not in prompt
+    assert "Follow clean architecture" not in prompt
 
 
 def test_analysis_includes_architecture_reference(melos_session) -> None:
     prompt, _ = build_prompt_with_stats(get_wave("analysis"), melos_session)
-    assert "Respeta clean architecture" in prompt
+    assert "Follow clean architecture" in prompt
 
 
 def test_documentation_init_has_rules_but_no_profile_references(melos_session) -> None:
     prompt, _ = build_prompt_with_stats(get_wave("documentation-init"), melos_session)
     assert "### Rules" in prompt
-    assert "Respeta clean architecture" not in prompt
+    assert "Follow clean architecture" not in prompt
     assert "Estándares de código Dart" not in prompt
 
 
@@ -82,14 +82,14 @@ def test_wave_without_reference_tags_injects_all(tmp_path, melos_session) -> Non
         reference_tags=None,
     )
     prompt, _ = build_prompt_with_stats(wave, melos_session)
-    assert "Respeta clean architecture" in prompt
+    assert "Follow clean architecture" in prompt
 
 
 def test_wave_with_empty_reference_tags_injects_none(melos_session) -> None:
     wave = get_wave("documentation-init")
     assert wave.reference_tags == ()
     prompt, _ = build_prompt_with_stats(wave, melos_session)
-    assert "Respeta clean architecture" not in prompt
+    assert "Follow clean architecture" not in prompt
 
 
 

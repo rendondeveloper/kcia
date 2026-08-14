@@ -10,6 +10,7 @@ from kcia.commands.doctor import doctor
 from kcia.commands.init import init
 from kcia.commands.mcp import app as mcp_app
 from kcia.commands.profile import app as profile_app
+from kcia.commands.session import app as session_app
 from kcia.commands.sync import sync
 from kcia.commands.task import app as task_app
 from kcia.commands.wave import app as wave_app
@@ -27,6 +28,7 @@ Common commands:
   kcia commit
   kcia doctor
   kcia ask "which profiles apply to lib/main.dart?"
+  kcia session log --title "..."
 """
 
 app = typer.Typer(help=ROOT_HELP, no_args_is_help=True)
@@ -36,6 +38,7 @@ app.add_typer(task_app, name="task")
 app.add_typer(wave_app, name="wave")
 app.add_typer(agent_app, name="agent")
 app.add_typer(profile_app, name="profile")
+app.add_typer(session_app, name="session")
 app.add_typer(auth_app, name="auth")
 app.add_typer(branch_app, name="branch")
 app.add_typer(mcp_app, name="mcp")

@@ -167,6 +167,9 @@ def commit_command(
         )
         session.save()
 
+    if written:
+        typer.echo("Tip: run `kcia session log --title ...` to record this work in .ai/history/.")
+
     if not (push or pr):
         return
 

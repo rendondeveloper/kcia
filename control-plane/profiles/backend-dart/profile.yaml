@@ -51,7 +51,7 @@ command_overrides:
 references:
   - { path: references/api.md, tags: [api, architecture] }
   - { path: references/data.md, tags: [data, architecture] }
-  - { path: references/dart_ai_rules.md, tags: [coding, architecture, style] }
+  - { path: references/dart_ai_rules.md, tags: [style] }
 workflows:
   - workflows/feature.md
   - workflows/bugfix.md

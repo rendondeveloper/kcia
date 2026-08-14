@@ -31,7 +31,7 @@ command_overrides:
       verify: "fvm flutter test && fvm flutter analyze"
 references:
   - { path: references/web.md, tags: [web, coding] }
-  - { path: references/flutter_ai_rules.md, tags: [coding, architecture, style] }
+  - { path: references/flutter_ai_rules.md, tags: [style] }
 workflows:
   - workflows/feature.md
   - workflows/bugfix.md
