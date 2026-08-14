@@ -20,14 +20,23 @@ from kcia.waves.runner import (
     approval_document,
     WaveBlocked,
     WaveCancelled,
+    WaveResult,
     check_agents_ready,
     next_pending_wave,
+    retry_wave,
     run_wave,
     run_waves_until,
 )
 from kcia.waves.session import Session, runs_dir
 
 app = typer.Typer(help="Run and inspect pipeline waves.", no_args_is_help=True)
+
+
+def report_retry_result(target_id: str, result: WaveResult) -> None:
+    if result.status != "completed":
+        typer.echo(f"Retry failed: {result.error}")
+        raise typer.Exit(code=1)
+    typer.echo(f"Wave `{target_id}` completed on retry.")
 
 
 @app.command("list")
@@ -74,8 +83,7 @@ def _render_blocked(blocked: WaveBlocked) -> None:
     if blocked.output_path:
         typer.echo(f"Full response: {blocked.output_path}")
     typer.echo("Answer it, then resume:")
-    typer.echo("  kcia task answer \"<your answer>\"")
-    typer.echo(f"  kcia wave retry {blocked.wave.id}")
+    typer.echo('  kcia task answer "<your answer>"')
 
 
 def _render_approval_gate(gate: ApprovalRequired) -> None:
@@ -196,7 +204,6 @@ def _execute(
         typer.echo(f"  {state.get('blocked_reason', 'reason not recorded')}")
         typer.echo("Answer it, then resume:")
         typer.echo('  kcia task answer "<your answer>"')
-        typer.echo(f"  kcia wave retry {stalled.id}")
         raise typer.Exit(code=2)
 
     problems = check_agents_ready(session.repo_root)
@@ -393,13 +400,7 @@ def wave_retry(wave_id: Optional[str] = typer.Argument(None)) -> None:
             typer.echo("No wave to retry.")
             raise typer.Exit(code=1)
         target_id = pending.id
-    session.set_wave_status(target_id, "pending")
-    session.save()
-    result = run_wave(target_id, session, force=True)
-    if result.status != "completed":
-        typer.echo(f"Retry failed: {result.error}")
-        raise typer.Exit(code=1)
-    typer.echo(f"Wave `{target_id}` completed on retry.")
+    report_retry_result(target_id, retry_wave(session, target_id))
 
 
 @app.command("skip")

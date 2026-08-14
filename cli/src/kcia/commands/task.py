@@ -18,6 +18,8 @@ from kcia.integrations.tickets import (
 from kcia.paths import find_repo_root
 from kcia.usage import collect_usage, format_duration, format_tokens
 from kcia.waves.progress import WaveProgress
+from kcia.commands.wave import report_retry_result
+from kcia.waves.runner import find_blocked_wave, retry_wave
 from kcia.waves.session import Session, classify_input, load_manifest_raw
 
 app = typer.Typer(help="Manage tasks and work items.", no_args_is_help=True)
@@ -201,6 +203,11 @@ def task_fetch() -> None:
 @app.command("inject", hidden=True)
 def task_answer(
     text: list[str] = typer.Argument(..., help="Answer or extra context."),
+    no_retry: bool = typer.Option(
+        False,
+        "--no-retry",
+        help="Record the injection without retrying a blocked wave.",
+    ),
 ) -> None:
     """Answer the agent's question, or add context, for the next wave."""
     repo = find_repo_root()
@@ -213,7 +220,16 @@ def task_answer(
         typer.echo(str(exc))
         raise typer.Exit(code=1) from exc
     session.add_injection(" ".join(text))
-    typer.echo("Injection recorded.")
+    if no_retry:
+        typer.echo("Injection recorded.")
+        return
+
+    blocked = find_blocked_wave(session)
+    if blocked is None:
+        typer.echo("No wave is blocked; injection recorded for the next wave that runs.")
+        return
+
+    report_retry_result(blocked.id, retry_wave(session, blocked.id))
 
 
 @app.command("abort")

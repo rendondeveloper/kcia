@@ -42,7 +42,7 @@ class WaveBlocked(Exception):
     """Raised when a wave reports it cannot proceed without an answer.
 
     Distinct from a failure: the work done so far is kept, and the wave is
-    resumed with `kcia task answer` followed by `kcia wave retry`.
+    resumed with `kcia task answer`.
     """
 
     def __init__(self, wave: WaveDefinition, reason: str, output_path: Path | None) -> None:
@@ -104,6 +104,19 @@ def next_pending_wave(session: Session) -> WaveDefinition | None:
         if session.wave_status(wave.id) == "pending":
             return wave
     return None
+
+
+def find_blocked_wave(session: Session) -> WaveDefinition | None:
+    return next(
+        (wave for wave in load_waves() if session.wave_status(wave.id) == "blocked"),
+        None,
+    )
+
+
+def retry_wave(session: Session, wave_id: str) -> WaveResult:
+    session.set_wave_status(wave_id, "pending")
+    session.save()
+    return run_wave(wave_id, session, force=True)
 
 
 def check_requires(session: Session, wave: WaveDefinition, *, force: bool = False) -> None:
