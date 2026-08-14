@@ -49,6 +49,19 @@ A small closed language: combinators `all`/`any`/`not` plus a fixed `_LEAF_PREDI
 
 `kcia init` is meant to produce `.ai/` in the target repo plus provider adapters rendered from `control-plane/templates/` (`render.render_template`, autoescape disabled — these are Markdown/YAML, not HTML). `.ai/local/`, `.ai/cache/`, and `.ai/generated/` are gitignored: treat anything under them as regenerable output, never hand-edited source.
 
+## Planning workflow
+
+All non-trivial change requests go through a plan file before any code is touched — this is the required workflow for this repo, not optional:
+
+1. On a change request, first analyze it. If anything is ambiguous or underspecified, write the open questions down instead of guessing.
+2. Create a plan file at `sessions/<timestamp>_<topic_slug>.md` (UTC timestamp, `topic_slug` in snake_case). If there are open questions, use a working `topic_slug` (e.g. `wip`) at creation time; once the plan is finalized, rename the file to a `topic_slug` that specifically describes what the plan is about.
+3. The plan file contains: the analysis, the open questions (if any), and the proposed plan. Everything in the file is written in English, per the repo-wide English-only policy above.
+4. The only output returned to the user after the initial prompt is the path/URL to the plan file, for them to review.
+5. The user answers open questions or requests changes by editing that same plan file directly (adding answers under the questions, etc.) — do not create a second file for the same request.
+6. Only start implementation once the plan in that file is confirmed.
+7. After implementing the plan, bump `VERSION` in `cli/src/kcia/__init__.py`. This is mandatory on every change — no exceptions. Decide major/minor/patch by semver judgment based on what the plan changed (breaking change → major, new capability → minor, fix/internal-only → patch), and record which one was chosen, and why, in the plan file.
+8. Commits made from this workflow must not carry a `Co-Authored-By` trailer for any AI tool (Claude, Cursor, or otherwise). No AI attribution/signature in commit messages.
+
 ## Conventions
 
 - Everything is written in English now: control-plane YAML descriptions/hints, Python code, docstrings, and CLI help text. Match the surrounding file. This is a **permanent, non-negotiable policy** — do not revert to Spanish (or any other language) anywhere in this repo, including `.ai/history/sessions.jsonl` entries written via `kcia session log`. `commands/session.py` enforces this at the tool level (rejecting `¿¡ñÑ`) as a backstop for any agent, not just the one editing a given file.
