@@ -49,6 +49,7 @@ command_overrides:
       verify: "fvm dart run melos run verify"
 references:
   - { path: references/accessibility.md, tags: [accessibility, coding] }
+  - { path: references/flutter_ai_rules.md, tags: [coding, architecture, style] }
 workflows:
   - workflows/feature.md
   - workflows/bugfix.md

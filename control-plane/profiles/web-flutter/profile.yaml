@@ -31,6 +31,7 @@ command_overrides:
       verify: "fvm flutter test && fvm flutter analyze"
 references:
   - { path: references/web.md, tags: [web, coding] }
+  - { path: references/flutter_ai_rules.md, tags: [coding, architecture, style] }
 workflows:
   - workflows/feature.md
   - workflows/bugfix.md
@@ -39,6 +40,7 @@ workflows:
 rules:
   require_responsive_layouts: true
   require_web_accessibility: true
+  keep_business_logic_out_of_widgets: true
 adapters:
   cursor:
     globs: ["**/*.dart"]
