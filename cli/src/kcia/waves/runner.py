@@ -42,7 +42,7 @@ class WaveBlocked(Exception):
     """Raised when a wave reports it cannot proceed without an answer.
 
     Distinct from a failure: the work done so far is kept, and the wave is
-    resumed with `kcia task answer`.
+    resumed with `kcia work answer`.
     """
 
     def __init__(self, wave: WaveDefinition, reason: str, output_path: Path | None) -> None:
@@ -56,7 +56,7 @@ class WaveCancelled(Exception):
     """Raised when the user interrupts a running wave.
 
     Not a failure: the provider is stopped, nothing is written, and the wave goes
-    back to `pending` so `kcia wave run` picks it up again from the start.
+    back to `pending` so `kcia work` picks it up again from the start.
     """
 
     def __init__(self, wave: WaveDefinition) -> None:
@@ -67,8 +67,8 @@ class WaveCancelled(Exception):
 class ApprovalRequired(Exception):
     """Raised instead of running a wave that a human has not approved yet.
 
-    Not a failure: the wave stays pending so `kcia wave run` resumes it once
-    `kcia wave approve` records the decision.
+    Not a failure: the wave stays pending so `kcia work` resumes it once
+    `kcia work approve` records the decision.
     """
 
     def __init__(self, wave: WaveDefinition, document: Path | None) -> None:

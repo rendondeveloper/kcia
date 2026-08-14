@@ -11,8 +11,7 @@ def test_help_lists_commands() -> None:
     output = result.stdout
     for command in [
         "start",
-        "task",
-        "wave",
+        "work",
         "agent",
         "profile",
         "session",

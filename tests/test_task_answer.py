@@ -1,4 +1,4 @@
-"""`task answer` records injections and retries blocked waves by default."""
+"""`work answer` records injections and retries blocked waves by default."""
 
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ def test_task_answer_retries_blocked_wave(git_repo: Path, monkeypatch) -> None:
     monkeypatch.chdir(git_repo)
 
     completed = WaveResult(wave_id="understanding", status="completed")
-    with patch("kcia.commands.task.retry_wave", return_value=completed) as mock_retry:
-        result = runner.invoke(app, ["task", "answer", "The profile screen."])
+    with patch("kcia.commands.work.retry_wave", return_value=completed) as mock_retry:
+        result = runner.invoke(app, ["work", "answer", "The profile screen."])
 
     assert result.exit_code == 0, result.stdout
     mock_retry.assert_called_once()
@@ -58,8 +58,8 @@ def test_task_answer_without_blocked_wave_prints_note(git_repo: Path, monkeypatc
     Session.create(git_repo, text="fix the overflow", mode="prompt")
     monkeypatch.chdir(git_repo)
 
-    with patch("kcia.commands.task.retry_wave") as mock_retry:
-        result = runner.invoke(app, ["task", "answer", "Extra context."])
+    with patch("kcia.commands.work.retry_wave") as mock_retry:
+        result = runner.invoke(app, ["work", "answer", "Extra context."])
 
     assert result.exit_code == 0, result.stdout
     mock_retry.assert_not_called()
@@ -73,10 +73,10 @@ def test_task_answer_no_retry_preserves_record_only(git_repo: Path, monkeypatch)
     _block_understanding(git_repo)
     monkeypatch.chdir(git_repo)
 
-    with patch("kcia.commands.task.retry_wave") as mock_retry:
+    with patch("kcia.commands.work.retry_wave") as mock_retry:
         result = runner.invoke(
             app,
-            ["task", "answer", "--no-retry", "The profile screen."],
+            ["work", "answer", "--no-retry", "The profile screen."],
         )
 
     assert result.exit_code == 0, result.stdout

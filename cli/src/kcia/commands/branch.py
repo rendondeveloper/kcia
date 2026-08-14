@@ -107,7 +107,7 @@ def branch_config() -> None:
     flow = load_flow(repo)
     if not flow.configured:
         typer.echo("Not configured yet — run `kcia start` to decide the branching model.")
-        typer.echo("Until then `kcia wave run` leaves you on the current branch.")
+        typer.echo("Until then `kcia work` leaves you on the current branch.")
         return
     typer.echo(flow.describe() + ".")
     if flow.main_branch:

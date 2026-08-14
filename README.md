@@ -39,18 +39,18 @@ kcia start                                            # idempotent; rerun any ti
 
 # ── Once per task ───────────────────────────────────────────────────────────
 # 5. Start a task — from a prompt, or from a Jira issue.
-kcia task init "fix the overflow on the profile screen"
+kcia work "fix the overflow on the profile screen"
 
 # 6. Run the waves. The branch is opened automatically; the run pauses before
 #    touching your code.
-kcia wave run
+kcia work
 
 # 7. Read the plan, then let the build run.
-kcia wave plan
-kcia wave approve
+kcia work plan
+kcia work approve
 
 # 8. Inspect progress and token usage.
-kcia task show
+kcia work show
 
 # 9. Review the diff, then close the task. Nothing is committed until you confirm.
 git diff
@@ -100,7 +100,7 @@ Agents
       `cursor` is not installed, so this role cannot run.
 ```
 
-You do not need to remember to run it: `kcia wave run` performs the same check for the
+You do not need to remember to run it: `kcia work` performs the same check for the
 configured roles **before the first wave**, and refuses to start with the install or login
 hint. That matters because the builder's provider is not exercised until the fourth wave —
 without the upfront check, three planner waves would burn tokens before a missing
@@ -230,7 +230,7 @@ kcia reads the real branches first — local **and** remote — so `main`/`maste
 `develop`/`development`/`dev` come pre-filled and you usually just press Enter. It only
 really asks when the repository is ambiguous (both `main` and `master` exist) or has neither.
 
-**After that, nothing ever asks again.** `kcia wave run` opens the task's branch by itself
+**After that, nothing ever asks again.** `kcia work` opens the task's branch by itself
 and says so in one line:
 
 ```
@@ -280,21 +280,21 @@ small.
 ### 5. Start a task
 
 ```bash
-kcia task init "fix the overflow on the profile screen"
+kcia work "fix the overflow on the profile screen"
 ```
 
 **Variants**
 
 | Command | What it does |
 |---|---|
-| `kcia task init "<prompt>"` | start from free-form text |
-| `kcia task init PROJ-123` | start from a Jira issue and fetch its body — see [MCP servers](#mcp-servers-jira) |
-| `kcia task init PROJ-123 --no-fetch` | start from the key alone, no provider call |
-| `kcia task init "…" --scope packages/api` | limit which packages drive active profiles |
-| `kcia task fetch` | re-fetch the current task's issue after it changed in Jira |
-| `kcia task answer "<text>"` | add context, or answer a blocked agent |
-| `kcia task show` | status, per-wave timings, tokens |
-| `kcia task abort` | throw the task away; the files it wrote stay on disk |
+| `kcia work "<prompt>"` | start from free-form text |
+| `kcia work PROJ-123` | start from a Jira issue and fetch its body — see [MCP servers](#mcp-servers-jira) |
+| `kcia work PROJ-123 --no-fetch` | start from the key alone, no provider call |
+| `kcia work "…" --scope packages/api` | limit which packages drive active profiles |
+| `kcia work fetch` | re-fetch the current task's issue after it changed in Jira |
+| `kcia work answer "<text>"` | add context, or answer a blocked agent |
+| `kcia work show` | status, per-wave timings, tokens |
+| `kcia work abort` | throw the task away; the files it wrote stay on disk |
 
 `--scope` matters on a monorepo: a task that only touches the API package does not pull in
 the Flutter profile bundles, and the prompt gets smaller.
@@ -302,22 +302,22 @@ the Flutter profile bundles, and the prompt gets smaller.
 ### 6. Run the waves
 
 ```bash
-kcia wave run
+kcia work
 ```
 
 **Variants**
 
 | Command | What it does |
 |---|---|
-| `kcia wave list` | the five waves, their status and token usage |
-| `kcia wave run` | run the next pending wave, then keep going |
-| `kcia wave run understanding` | run one wave by id |
-| `kcia wave run --until analysis` | stop after that wave |
-| `kcia wave run --yes` | skip the approval gate (unattended runs) |
-| `kcia wave run --quiet` | no live progress line (CI, logs) |
-| `kcia wave retry <wave>` | run it again after answering or fixing something |
-| `kcia wave skip <wave>` | mark it skipped and move on |
-| `kcia wave logs <wave>` | the provider output for that wave |
+| `kcia work list` | the five waves, their status and token usage |
+| `kcia work` | run the next pending wave, then keep going |
+| `kcia work --wave understanding` | run one wave by id |
+| `kcia work --until analysis` | stop after that wave |
+| `kcia work --yes` | skip the approval gate (unattended runs) |
+| `kcia work --quiet` | no live progress line (CI, logs) |
+| `kcia work retry <wave>` | run it again after answering or fixing something |
+| `kcia work skip <wave>` | mark it skipped and move on |
+| `kcia work logs <wave>` | the provider output for that wave |
 
 While a wave runs, a live status line reports which agent is working, on which provider and
 model, and what it is doing right now:
@@ -327,14 +327,14 @@ model, and what it is doing right now:
 implementation · builder · cursor/composer-2.5 — completed (10m12s, 7 tool calls, 2 files written, 13k tokens)
 ```
 
-`kcia wave run` closes with the total (`All waves completed in 14m35s.`), and `kcia task show`
+`kcia work` closes with the total (`All waves completed in 14m35s.`), and `kcia work show`
 breaks the time down per wave alongside the tokens. The line is drawn on stderr and refreshed
 in place, so piping or redirecting stdout is unaffected. Off a TTY it degrades to one plain
 line per wave, and `--quiet` turns it off entirely.
 
 #### The approval gate
 
-The three planning waves run unattended, but `kcia wave run` **stops before
+The three planning waves run unattended, but `kcia work` **stops before
 `implementation`** — the first wave allowed to touch code outside `.ai/`. It points at the
 plan and waits:
 
@@ -345,19 +345,19 @@ Paused before `implementation` — the first wave that can change your code.
 
 Open it and edit it directly if something is wrong — your changes go
 into the builder's prompt. Then:
-  kcia wave plan               print it here
-  kcia wave approve            approve and continue
-  kcia task answer "..."       add context, then re-run the planning wave
-  kcia task abort              stop here
+  kcia work plan               print it here
+  kcia work approve            approve and continue
+  kcia work answer "..."       add context, then re-run the planning wave
+  kcia work abort              stop here
 ```
 
 The plan is plain Markdown at `.ai/context/plan.md`. **Editing it during the pause works**:
 prompts are composed when a wave runs, not when the plan was written, so whatever the file
-says at `kcia wave approve` time is what the builder gets. That makes correcting a plan
+says at `kcia work approve` time is what the builder gets. That makes correcting a plan
 cheaper than re-running the planning waves.
 
-`kcia wave approve` records the decision **and continues the run** — one command, not two.
-Use `--no-run` to only record it, `--note` to attach a reason, and `kcia wave plan` to
+`kcia work approve` records the decision **and continues the run** — one command, not two.
+Use `--no-run` to only record it, `--note` to attach a reason, and `kcia work plan` to
 reprint the plan at any time. The paused run exits with code `2`, distinct from a real
 failure (`1`), so scripts can tell "waiting for a human" from "broken".
 
@@ -382,8 +382,8 @@ Stopped at `understanding` — the agent cannot proceed.
 
 Full response: .ai/local/runs/understanding-01.blocked.md
 Answer it, then resume:
-  kcia task answer "<your answer>"
-  kcia wave retry understanding
+  kcia work answer "<your answer>"
+  kcia work retry understanding
 ```
 
 This exists because the alternative is worse than a crash. Without it a planner that says
@@ -394,7 +394,7 @@ and touched two unrelated files.
 A blocked wave is not a failure: its status is `blocked`, no `error` is recorded, and the
 work is kept. The response is written to `.ai/local/runs/` and deliberately **not** to the
 wave's context file — a question is not the artifact the wave produces, and putting
-`BLOCKED: …` into `task.md` would feed the gap to every later wave. `kcia wave run` refuses
+`BLOCKED: …` into `task.md` would feed the gap to every later wave. `kcia work` refuses
 to move on while a wave is blocked, rather than skipping to the next pending one.
 
 Detection is intentionally narrow, since a false positive halts a healthy run: the protocol
@@ -409,11 +409,11 @@ question, or the word `UNKNOWN` in passing, does not trigger it.
 ⠹ implementation · builder · cursor/composer-2.5 — stopping… · 3m02s · 5 tools · 9k tok
 
 Stopped `implementation`. The provider was terminated and nothing was written.
-It is pending again — `kcia wave run` starts it from the top.
+It is pending again — `kcia work` starts it from the top.
 ```
 
 The wave goes back to **`pending`**, not `failed`: a wave writes its output only after the
-full response arrives, so an interrupted one simply never started. `kcia wave run` picks it
+full response arrives, so an interrupted one simply never started. `kcia work` picks it
 up again, and the session lock is released, so nothing is left stuck. The exit code is `130`,
 the usual one for "interrupted".
 
@@ -423,7 +423,7 @@ trapped waiting for it.
 This is polled by the loop reading the provider's output, which is where a run spends
 essentially all its time. A provider that streams nothing at all is just as cancellable: its
 output is read on a separate thread, so neither the cancel nor the idle timeout can be
-blocked by a silent CLI. `kcia task init` on a Jira issue is interruptible the same way.
+blocked by a silent CLI. `kcia work` on a Jira issue is interruptible the same way.
 
 ### 7. Close the task
 
@@ -490,7 +490,7 @@ resets the index and stages each commit's files explicitly.
 
 #### Starting the branch by hand
 
-`kcia wave run` does this for you under git flow. The command stays for the times you want
+`kcia work` does this for you under git flow. The command stays for the times you want
 a branch before starting the pipeline, or a different name than the one derived from the task:
 
 ```bash
@@ -628,8 +628,8 @@ Once Jira is connected, an issue key replaces the prompt text and the rest of th
 is identical:
 
 ```bash
-kcia task init PROJ-123          # instead of: kcia task init "fix the overflow"
-kcia wave run
+kcia work PROJ-123          # instead of: kcia work "fix the overflow"
+kcia work
 ```
 
 `task init` fetches the issue and writes it to `.ai/context/ticket.md`, which is injected
@@ -851,7 +851,7 @@ Concretely, kcia:
 | **Profile** | A technology pack: detection rules, shell commands, coding references, boolean rules. |
 | **Agent** | One of two roles — `planner` or `builder` — each mapped to a `(provider, model)` pair. |
 | **Wave** | One of five sequential pipeline steps, from understanding through documentation. |
-| **Task** | A unit of work started with `kcia task init`, tracked in `.ai/local/session.json`. |
+| **Task** | A unit of work started with `kcia work`, tracked in `.ai/local/session.json`. |
 
 ### Where kcia lives
 
@@ -899,7 +899,7 @@ events. Your subscription, your models, your machine.
 
 ```mermaid
 flowchart TD
-    A["kcia wave run"] --> B["Session<br/>.ai/local/session.json"]
+    A["kcia work"] --> B["Session<br/>.ai/local/session.json"]
     B --> C["Resolve agent<br/>planner or builder → provider + model"]
     C --> D["Compose prompt<br/>filter refs by wave · apply budget · repo map"]
     R["Role"] --> D
@@ -926,8 +926,8 @@ flowchart TD
 your project/          ~/tools/kcia/              provider CLI
 ─────────────          ─────────────              ────────────
 kcia start         →    detect + control-plane  →  (no model yet)
-kcia task init    →    session.json
-kcia wave run     →    compose prompt        →    claude / cursor-agent
+kcia work        →    session.json
+kcia work         →    compose prompt        →    claude / cursor-agent
                        write prompt.md            ↓
                        parse stdout         ←    stream-json events
                        write plan.md
@@ -1002,7 +1002,7 @@ the existing `reference_tags` filtering, not to invent a second mechanism.
 
 ### 3. A task moves through five waves
 
-`kcia task init "<prompt or ticket>"` creates `.ai/local/session.json`, holding the task,
+`kcia work "<prompt or ticket>"` creates `.ai/local/session.json`, holding the task,
 the active profiles, and per-wave state (`pending`, `running`, `completed`, `failed`,
 `skipped`, `awaiting_input`). The waves are **data**, declared in
 `control-plane/waves/waves.yaml`:
@@ -1015,7 +1015,7 @@ the active profiles, and per-wave state (`pending`, `running`, `completed`, `fai
 | 4 | `implementation` | builder | `**` | your code — validation **required** |
 | 5 | `documentation-final` | builder | `.ai/**` | `milestones.md` |
 
-Each wave declares `requires`, so `kcia wave run analysis` fails if `understanding` is not
+Each wave declares `requires`, so `kcia work --wave analysis` fails if `understanding` is not
 completed (override with `--force`). A machine-wide lock keyed on pid ensures one wave at a
 time; a stale lock left by a dead process is cleared automatically.
 
@@ -1040,7 +1040,7 @@ retries. Token usage per section is tracked internally for budgeting decisions.
 | 6 | Task context | `.ai/context/task.md` (+ `ticket.md` in ticket mode) |
 | 7 | Previous wave output | `plan.md` on `implementation` and `documentation-final` |
 | 8 | Validation error | injected on retry with the failing command's real output |
-| 9 | Injections | anything added with `kcia task answer "<text>"` |
+| 9 | Injections | anything added with `kcia work answer "<text>"` |
 | 10 | Wave instruction | `control-plane/waves/prompts/<wave>.md.j2` |
 | 11 | Output format | fixed footer |
 | 12 | Context budget | only when references were dropped to fit the budget |
@@ -1056,7 +1056,7 @@ requests `[coding, testing, validation, api, data, web, accessibility]`. Waves w
 whole reference files are dropped tag-by-tag following `budget.drop_order`. A
 `## Context budget` footer lists what was omitted. Guardrails are never truncated.
 
-**Task scope.** `kcia task init --scope packages/api` limits which manifest roots drive
+**Task scope.** `kcia work --scope packages/api` limits which manifest roots drive
 profile resolution, so a task that only touches the API package does not pull in Flutter
 profile bundles.
 
@@ -1067,7 +1067,7 @@ Measured on `tests/fixtures/repos/melos_mono` with one active profile (`backend-
 | Tokens per task (5 waves) | ~14 834 | ~12 655 (~15% lower) |
 | `understanding` wave | ~2 958 | ~2 482 (~16% lower) |
 
-Guardrails are plain Markdown in the control plane — edit them and the next `kcia wave run`
+Guardrails are plain Markdown in the control plane — edit them and the next `kcia work`
 picks up the change with no reinstall.
 
 ### 5. How Python talks to the model CLIs
@@ -1159,14 +1159,14 @@ Token counts come from the provider's own `UsageUpdate` events and are accumulat
 wave — including across validation retries, which invoke the provider more than once.
 
 ```
-$ kcia wave list
+$ kcia work list
 1. understanding	completed	planner (claude/claude-opus-5)	18.4k tokens
 2. analysis	completed	planner (claude/claude-opus-5)	22.0k tokens
 3. documentation-init	pending	planner (claude/claude-opus-5)
 
 total: 40.4k tokens
 
-$ kcia task show
+$ kcia work show
 tokens: 40.4k
   input:  36.0k
   output: 4.0k

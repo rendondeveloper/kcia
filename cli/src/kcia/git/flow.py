@@ -3,7 +3,7 @@
 Two models, and no third: either every task opens its own branch off a
 development branch, or every task is done on whatever branch you are standing
 on. The choice is made once, written to `.ai/local/git.yaml`, and after that the
-pipeline just follows it — `kcia wave run` never stops to ask, because a question
+pipeline just follows it — `kcia work` never stops to ask, because a question
 in the middle of a run is a question asked at the worst possible moment.
 
 Detection exists to make that one decision cheap, not to be clever: `main` and

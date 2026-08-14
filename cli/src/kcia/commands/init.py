@@ -304,7 +304,7 @@ def _report_agents(repo_root: Path) -> None:
                 f"Run `kcia agent models {item.provider}` and set a valid one."
             )
     if not stale:
-        typer.echo("Next: kcia task init \"<what you want>\"")
+        typer.echo("Next: kcia work \"<what you want>\"")
 
 
 def _resolve_ambiguities(hits: list[DetectionHit], *, interactive: bool) -> list[DetectionHit]:

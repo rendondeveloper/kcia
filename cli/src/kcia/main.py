@@ -12,8 +12,7 @@ from kcia.commands.mcp import app as mcp_app
 from kcia.commands.profile import app as profile_app
 from kcia.commands.session import app as session_app
 from kcia.commands.sync import sync
-from kcia.commands.task import app as task_app
-from kcia.commands.wave import app as wave_app
+from kcia.commands.work import app as work_app
 
 ROOT_HELP = """kcia: control plane CLI for development agents
 
@@ -22,9 +21,8 @@ Common commands:
   kcia start
   kcia profile list
   kcia agent show
-  kcia task init "fix the overflow"
+  kcia work "fix the overflow"
   kcia branch start
-  kcia wave run
   kcia done
   kcia doctor
   kcia ask "which profiles apply to lib/main.dart?"
@@ -34,8 +32,7 @@ Common commands:
 app = typer.Typer(help=ROOT_HELP, no_args_is_help=True)
 
 app.command("start", help="Initialize `.ai/` and generated adapters in the current repository.")(init)
-app.add_typer(task_app, name="task")
-app.add_typer(wave_app, name="wave")
+app.add_typer(work_app, name="work")
 app.add_typer(agent_app, name="agent")
 app.add_typer(profile_app, name="profile")
 app.add_typer(session_app, name="session")

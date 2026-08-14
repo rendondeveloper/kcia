@@ -3,6 +3,25 @@
 Two versions are tracked independently. CLI entries are headed `## X.Y.Z`; control-plane
 entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
 
+## 0.4.1 — 2026-08-14
+
+### CLI
+
+- Drop the interim `work run` subcommand. The bare `kcia work` command is the only pipeline
+  entry point; single-wave control moves to `--wave <id>` (e.g. `kcia work --wave
+  understanding`).
+
+## 0.4.0 — 2026-08-14
+
+### CLI
+
+- **Breaking:** merged `kcia task` and `kcia wave` into `kcia work`. `kcia work "<text>"`
+  creates a task and runs the pipeline; bare `kcia work` continues the active task.
+  Single-wave control uses `--wave <id>` on the same command (not a separate subcommand).
+  Subcommands `show`, `fetch`, `answer`/`inject`, `abort`, `list`, `approve`,
+  `plan`, `retry`, `skip`, and `logs` live under the `work` prefix. The old `task` and
+  `wave` command groups are removed.
+
 ## 0.0.1 — 2026-08-09
 
 First published version. The history before it was discarded, so this entry describes
@@ -38,7 +57,7 @@ everything that exists rather than what changed.
   - A live status line reports the wave, role, provider, model, elapsed time, tool calls and
     tokens; `--quiet` turns it off.
 - Git — the branching model is chosen once at `kcia init` (git flow, or work on the current
-  branch) and stored in `.ai/local/git.yaml`. `kcia wave run` opens the task's branch by
+  branch) and stored in `.ai/local/git.yaml`. `kcia work` opens the task's branch by
   itself. `branch start/base/config` stay for manual use. `kcia commit` closes a task with
   two commits — the plan (`docs:`) and the code — after showing the messages and files and
   waiting for confirmation. `--single`, `--dry-run`, `--type`, `--ticket/--no-ticket`,

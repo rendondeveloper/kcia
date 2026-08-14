@@ -76,7 +76,7 @@ def test_scope_missing_path_exits_before_session(tmp_path: Path) -> None:
     subprocess.run(["cp", "-R", str(MELOS_REPO), str(repo)], check=True)
     (repo / ".git").mkdir()
     result = subprocess.run(
-        [str(KCIA), "task", "init", "demo", "--scope", "packages/missing"],
+        [str(KCIA), "work", "demo", "--scope", "packages/missing"],
         capture_output=True,
         text=True,
         cwd=repo,

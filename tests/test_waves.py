@@ -10,6 +10,9 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from typer.testing import CliRunner
+
+from kcia.main import app
 
 from kcia.providers.base import RunResult
 from kcia.waves.definitions import load_waves
@@ -21,6 +24,7 @@ from kcia.waves.validation import ValidationStep, build_validation_plan, run_val
 ROOT = Path(__file__).resolve().parents[1]
 KCIA = ROOT / ".venv" / "bin" / "kcia"
 MELOS_REPO = ROOT / "tests" / "fixtures" / "repos" / "melos_mono"
+runner = CliRunner()
 
 
 @pytest.fixture
@@ -39,14 +43,11 @@ def test_classify_input_prompt_mode_without_jira() -> None:
     assert classify_input("arregla el overflow", {}) == "prompt"
 
 
-def test_task_init_creates_session_json(git_repo: Path) -> None:
-    result = subprocess.run(
-        [str(KCIA), "task", "init", "arregla el overflow"],
-        capture_output=True,
-        text=True,
-        cwd=git_repo,
-    )
-    assert result.returncode == 0, result.stderr
+def test_work_creates_session_json(git_repo: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repo)
+    with patch("kcia.commands.work._execute"):
+        result = runner.invoke(app, ["work", "arregla el overflow"])
+    assert result.exit_code == 0, result.stdout
     path = session_path(git_repo)
     assert path.is_file()
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -54,15 +55,10 @@ def test_task_init_creates_session_json(git_repo: Path) -> None:
     assert data["task"]["prompt"] == "arregla el overflow"
 
 
-def test_wave_list_shows_five_waves(git_repo: Path) -> None:
-    subprocess.run(
-        [str(KCIA), "task", "init", "demo task"],
-        capture_output=True,
-        cwd=git_repo,
-        check=True,
-    )
+def test_work_list_shows_five_waves(git_repo: Path) -> None:
+    Session.create(git_repo, text="demo task", mode="prompt")
     result = subprocess.run(
-        [str(KCIA), "wave", "list"],
+        [str(KCIA), "work", "list"],
         capture_output=True,
         text=True,
         cwd=git_repo,
