@@ -19,13 +19,13 @@ ROOT_HELP = """kcia: control plane CLI for development agents
 
 Common commands:
 
-  kcia init
+  kcia start
   kcia profile list
   kcia agent show
   kcia task init "fix the overflow"
   kcia branch start
   kcia wave run
-  kcia commit
+  kcia done
   kcia doctor
   kcia ask "which profiles apply to lib/main.dart?"
   kcia session log --title "..."
@@ -33,7 +33,7 @@ Common commands:
 
 app = typer.Typer(help=ROOT_HELP, no_args_is_help=True)
 
-app.command("init", help="Initialize `.ai/` and generated adapters in the current repository.")(init)
+app.command("start", help="Initialize `.ai/` and generated adapters in the current repository.")(init)
 app.add_typer(task_app, name="task")
 app.add_typer(wave_app, name="wave")
 app.add_typer(agent_app, name="agent")
@@ -43,7 +43,7 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(branch_app, name="branch")
 app.add_typer(mcp_app, name="mcp")
 
-app.command("commit", help="Review and write the commits that close the task.")(commit_command)
+app.command("done", help="Review and write the commits that close the task.")(commit_command)
 app.command("doctor", help="Validate local setup and repository configuration.")(doctor)
 app.command("ask", help="Run a direct query without creating a task.")(ask)
 app.command("sync", help="Sync the control plane and re-render adapters.")(sync)

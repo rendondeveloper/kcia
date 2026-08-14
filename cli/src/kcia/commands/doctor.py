@@ -43,14 +43,14 @@ def _report_git_flow(report: "_Report", repo: Path) -> None:
     from kcia.git.repo import GitError, current_branch, is_git_repo, remotes
 
     if not is_git_repo(repo):
-        report.line(WARN, "not a git worktree", "`kcia branch` and `kcia commit` need one.")
+        report.line(WARN, "not a git worktree", "`kcia branch` and `kcia done` need one.")
         return
     try:
         flow = load_flow(repo)
         report.line(
             OK if flow.configured else WARN,
             f"git flow: {flow.describe()}" if flow.configured else "git flow: not configured",
-            None if flow.configured else "Run `kcia init` to decide the branching model.",
+            None if flow.configured else "Run `kcia start` to decide the branching model.",
         )
         detected = detect_base_branch(repo)
         report.line(OK, f"branch {current_branch(repo)}")
@@ -63,7 +63,7 @@ def _report_git_flow(report: "_Report", repo: Path) -> None:
         report.line(
             OK if names else WARN,
             f"remote {', '.join(names) if names else 'none'}",
-            None if names else "`kcia commit --push` needs one: `git remote add origin <url>`.",
+            None if names else "`kcia done --push` needs one: `git remote add origin <url>`.",
         )
     except GitError as exc:
         report.line(WARN, f"git state unreadable: {exc}")
@@ -99,7 +99,7 @@ def doctor() -> None:
     report.line(
         OK if gh else WARN,
         f"gh {gh or 'not found'}",
-        None if gh else "Optional: only `kcia commit --pr` needs it (https://cli.github.com).",
+        None if gh else "Optional: only `kcia done --pr` needs it (https://cli.github.com).",
     )
 
     try:
@@ -177,7 +177,7 @@ def doctor() -> None:
         report.line(
             OK if manifest.is_file() else WARN,
             f"manifest {'found' if manifest.is_file() else 'missing'}",
-            None if manifest.is_file() else "Run `kcia init` in this repository.",
+            None if manifest.is_file() else "Run `kcia start` in this repository.",
         )
         _report_git_flow(report, repo)
         _report_session_history(report, repo)

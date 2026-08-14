@@ -113,7 +113,7 @@ def test_init_writes_facts_and_preserves_later_edits(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
 
     result = subprocess.run(
-        [str(KCIA), "init", "--yes", "--path", str(repo)], capture_output=True, text=True
+        [str(KCIA), "start", "--yes", "--path", str(repo)], capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
 
@@ -123,12 +123,12 @@ def test_init_writes_facts_and_preserves_later_edits(tmp_path: Path) -> None:
     project.write_text(
         project.read_text(encoding="utf-8") + "\n## Domain\nHand written.\n", encoding="utf-8"
     )
-    subprocess.run([str(KCIA), "init", "--yes", "--path", str(repo)], check=True, capture_output=True)
+    subprocess.run([str(KCIA), "start", "--yes", "--path", str(repo)], check=True, capture_output=True)
     assert "Hand written." in project.read_text(encoding="utf-8")
 
     # --refresh-context is the explicit opt-in to discard those edits.
     subprocess.run(
-        [str(KCIA), "init", "--yes", "--refresh-context", "--path", str(repo)],
+        [str(KCIA), "start", "--yes", "--refresh-context", "--path", str(repo)],
         check=True,
         capture_output=True,
     )

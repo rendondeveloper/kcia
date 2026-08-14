@@ -170,7 +170,7 @@ Limits what the CLI or the agent may do through Git, shell, Jira, GitHub or loca
 
 - Never run `git push --force`, `git reset --hard`, or any merge.
 - Read-only git only (`status`, `diff`, `log`): branch and commit are the user's, with
-  `kcia branch start` / `kcia commit`.
+  `kcia branch start` / `kcia done`.
 
 ## Shell Rules
 

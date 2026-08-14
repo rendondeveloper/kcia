@@ -1,6 +1,6 @@
 """Open the task's branch automatically, following the configured flow.
 
-`kcia wave run` never asks: the branching model was decided at `kcia init` and
+`kcia wave run` never asks: the branching model was decided at `kcia start` and
 lives in `.ai/local/git.yaml`. This module turns that decision into an action
 once per task, and gets out of the way — a failure here reports itself and lets
 the run continue, because not being on the ideal branch is never a reason to

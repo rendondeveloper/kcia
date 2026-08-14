@@ -207,7 +207,7 @@ def _execute(
         typer.echo("Run `kcia doctor` for the full picture.")
         raise typer.Exit(code=1)
 
-    # The branching model was decided at `kcia init`; here it is only applied.
+    # The branching model was decided at `kcia start`; here it is only applied.
     outcome = ensure_task_branch(session)
     if outcome is not None:
         typer.echo(outcome.message)
@@ -291,7 +291,7 @@ def _run_loop(
             typer.echo("")
             typer.echo("Review the changes, then close the task:")
             typer.echo("  git diff                     what changed")
-            typer.echo("  kcia commit                  show the commits, then confirm")
+            typer.echo("  kcia done                    show the commits, then confirm")
             return
 
         try:

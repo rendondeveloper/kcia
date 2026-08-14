@@ -29,7 +29,7 @@ def repo(tmp_path: Path) -> Path:
     shutil.copytree(ROOT / "tests" / "fixtures" / "repos" / "melos_mono", target)
     subprocess.run(["git", "init", "-q", str(target)], check=True)
     subprocess.run(
-        [str(KCIA), "init", "--yes", "--path", str(target)], check=True, capture_output=True
+        [str(KCIA), "start", "--yes", "--path", str(target)], check=True, capture_output=True
     )
     return target
 

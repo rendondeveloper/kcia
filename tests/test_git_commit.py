@@ -117,7 +117,7 @@ def test_type_is_inferred_but_the_flag_wins(worked: Path) -> None:
 def test_cli_writes_both_commits_after_confirmation(worked: Path, monkeypatch) -> None:
     Session.create(worked, text="IP-116", mode="ticket", ticket_key="IP-116", title="add the flow")
     monkeypatch.chdir(worked)
-    result = runner.invoke(app, ["commit", "--yes"])
+    result = runner.invoke(app, ["done", "--yes"])
     assert result.exit_code == 0, result.output
     assert log(worked)[:2] == [
         "feat: IP-116 - add the flow",
@@ -128,7 +128,7 @@ def test_cli_writes_both_commits_after_confirmation(worked: Path, monkeypatch) -
 def test_cli_declining_the_prompt_writes_nothing(worked: Path, monkeypatch) -> None:
     Session.create(worked, text="add the flow", mode="prompt", title="add the flow")
     monkeypatch.chdir(worked)
-    result = runner.invoke(app, ["commit"], input="n\n")
+    result = runner.invoke(app, ["done"], input="n\n")
     assert result.exit_code == 1
     assert "Nothing was committed." in result.output
     assert log(worked) == ["initial"]
@@ -137,7 +137,7 @@ def test_cli_declining_the_prompt_writes_nothing(worked: Path, monkeypatch) -> N
 def test_dry_run_shows_the_commits_and_stops(worked: Path, monkeypatch) -> None:
     Session.create(worked, text="add the flow", mode="prompt", title="add the flow")
     monkeypatch.chdir(worked)
-    result = runner.invoke(app, ["commit", "--dry-run"])
+    result = runner.invoke(app, ["done", "--dry-run"])
     assert result.exit_code == 0
     assert "feat: add the flow" in result.output
     assert log(worked) == ["initial"]
@@ -147,7 +147,7 @@ def test_unrelated_staged_files_are_not_swept_into_the_commit(worked: Path, monk
     (worked / "unrelated.txt").write_text("x\n", encoding="utf-8")
     Session.create(worked, text="add the flow", mode="prompt", title="add the flow")
     monkeypatch.chdir(worked)
-    result = runner.invoke(app, ["commit", "--yes", "--type", "feat"])
+    result = runner.invoke(app, ["done", "--yes", "--type", "feat"])
     assert result.exit_code == 0, result.output
     files = subprocess.run(
         ["git", "show", "--name-only", "--format=", "HEAD"],

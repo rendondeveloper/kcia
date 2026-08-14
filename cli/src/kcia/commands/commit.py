@@ -112,7 +112,7 @@ def commit_command(
 
     resolved_subject = subject or (session.task.get("title") if session else None)
     if not resolved_subject:
-        typer.echo('No active task. Pass a subject: `kcia commit "add the loader"`.')
+        typer.echo('No active task. Pass a subject: `kcia done "add the loader"`.')
         raise typer.Exit(code=1)
 
     resolved_ticket = None if no_ticket else (ticket or (session.task.get("ticket_key") if session else None))

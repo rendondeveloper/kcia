@@ -23,7 +23,7 @@ def melos_session(tmp_path: Path):
     repo = tmp_path / "melos_mono"
     shutil.copytree(MELOS_FIXTURE, repo)
     result = subprocess.run(
-        [str(KCIA), "init", "--yes", "--path", str(repo)],
+        [str(KCIA), "start", "--yes", "--path", str(repo)],
         capture_output=True,
         text=True,
     )

@@ -4,7 +4,7 @@
 structured, auditable pipeline — without calling any LLM API directly.
 
 You install kcia **once** on your machine. Each project only gets a `.ai/` directory
-(gitignored) when you run `kcia init`.
+(gitignored) when you run `kcia start`.
 
 ---
 
@@ -25,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/rendondeveloper/kcia/master/scripts
 # 2. Check the machine: Python, git, provider CLIs, logins.
 kcia doctor
 
-# 3. Choose who runs the waves. Do this BEFORE `kcia init`.
+# 3. Choose who runs the waves. Do this BEFORE `kcia start`.
 kcia agent models                                    # what each provider offers
 kcia agent set planner claude --model claude-opus-5
 kcia agent set builder cursor --model composer-2.5
@@ -35,7 +35,7 @@ kcia agent show
 cd /path/to/your/project
 
 # 4. Detect technologies, write the manifest, generate adapters, pick the git flow.
-kcia init                                            # idempotent; rerun any time
+kcia start                                            # idempotent; rerun any time
 
 # ── Once per task ───────────────────────────────────────────────────────────
 # 5. Start a task — from a prompt, or from a Jira issue.
@@ -54,7 +54,7 @@ kcia task show
 
 # 9. Review the diff, then close the task. Nothing is committed until you confirm.
 git diff
-kcia commit
+kcia done
 ```
 
 That is the whole loop. Steps 1–3 are done once ever, step 4 once per repository,
@@ -68,7 +68,7 @@ steps 5–9 once per piece of work.
 
 - Python 3.11+
 - `git` — required. kcia branches and commits through the `git` binary in your repository.
-- `gh` — **optional**, only for `kcia commit --pr` (install: <https://cli.github.com>).
+- `gh` — **optional**, only for `kcia done --pr` (install: <https://cli.github.com>).
 - A provider CLI, **installed and logged in**, for each role you use.
 
 kcia never calls an LLM API. It shells out to the CLI you already have, so that CLI — and
@@ -140,9 +140,9 @@ rc and tells you to `source` it.
 
 ### 3. Choose your agents
 
-The agents are what actually run every wave, and they are *not* part of `kcia init`. Skip
+The agents are what actually run every wave, and they are *not* part of `kcia start`. Skip
 this step and the pipeline silently falls back to catalog defaults — you can burn a full run
-on a model you never chose. `kcia init` closes by printing the agents it will use, so check
+on a model you never chose. `kcia start` closes by printing the agents it will use, so check
 that line before starting a task.
 
 ```bash
@@ -188,11 +188,11 @@ Note that `.ai/local/` is gitignored, so a repo-scoped choice is **yours on this
 — it does not travel with the repository. There is currently no committed, team-wide way to
 pin models for a project; each person runs the `--scope repo` command in their own clone.
 
-### 4. `kcia init` — set up the repository
+### 4. `kcia start` — set up the repository
 
 ```bash
 cd /path/to/your/project
-kcia init
+kcia start
 ```
 
 It writes `.ai/manifest.yaml`, composed profile bundles, provider adapters (`CLAUDE.md`,
@@ -253,10 +253,10 @@ develop_branch: develop
 base_branch: develop        # new branches start here
 ```
 
-Non-interactive (`kcia init --yes`, CI) never blocks: git flow goes on when the repository
+Non-interactive (`kcia start --yes`, CI) never blocks: git flow goes on when the repository
 already has a development branch, off otherwise.
 
-#### What `init` puts in your project
+#### What `start` puts in your project
 
 | Path | Contents |
 |---|---|
@@ -268,13 +268,13 @@ already has a development branch, off otherwise.
 | `.cursor/rules/NN-<id>.mdc` | one Cursor rule per profile, with `globs` scoped to that profile's roots |
 
 Only `.ai/local/`, `.ai/cache/` and `.ai/generated/` are gitignored — those are pure output,
-regenerable by rerunning `kcia init` any time. `manifest.yaml`, `context/project.md` and
+regenerable by rerunning `kcia start` any time. `manifest.yaml`, `context/project.md` and
 [`history/sessions.jsonl`](#8-session-history) are meant to be committed: the manifest and
 `project.md` so the team shares the same detected profiles and project facts, and the session
 log because it is the durable record `kcia session log` writes to. `project.md` has one more
-property beyond being tracked: `init` seeds it and then **never overwrites it**, because it is
+property beyond being tracked: `start` seeds it and then **never overwrites it**, because it is
 the place to add what only you know. See
-[What `kcia init` writes](#2-what-kcia-init-puts-in-your-project) for why it is deliberately
+[What `kcia start` writes](#2-what-kcia-start-puts-in-your-project) for why it is deliberately
 small.
 
 ### 5. Start a task
@@ -434,19 +434,19 @@ to keep them still yours.
 
 ```bash
 git diff
-kcia commit
+kcia done
 ```
 
 **Variants**
 
 | Command | What it does |
 |---|---|
-| `kcia commit` | show the commits, then confirm |
-| `kcia commit --dry-run` | show them and stop |
-| `kcia commit "subject" --type fix` | set the subject and type by hand |
-| `kcia commit --single` | one commit instead of two |
-| `kcia commit --ticket IP-9` / `--no-ticket` | override or drop the issue key |
-| `kcia commit --push --pr` | push, then open the PR with `gh` |
+| `kcia done` | show the commits, then confirm |
+| `kcia done --dry-run` | show them and stop |
+| `kcia done "subject" --type fix` | set the subject and type by hand |
+| `kcia done --single` | one commit instead of two |
+| `kcia done --ticket IP-9` / `--no-ticket` | override or drop the issue key |
+| `kcia done --push --pr` | push, then open the PR with `gh` |
 
 It prints exactly what it is about to write — messages **and** the files in each commit —
 and writes nothing until you answer `y`:
@@ -508,7 +508,7 @@ fix/overflow-en-el-header            # no ticket: no key in the name
 docs/IP-200-jira-guide
 ```
 
-**The base branch comes from the config**, the one `kcia init` wrote. Only when a repository
+**The base branch comes from the config**, the one `kcia start` wrote. Only when a repository
 was never configured does `branch start` fall back to reading the branches itself:
 
 1. If you are **on** `develop` / `main` / `master`, that is the base.
@@ -533,16 +533,16 @@ kcia and `git push` from your shell do the same thing. Concretely, per project y
 
 | For | Requirement |
 |---|---|
-| automatic branching, `kcia branch start`, `kcia commit` | a git worktree (`git init` / a clone) and `user.name` + `user.email` set |
-| `kcia commit --push` | a remote (`git remote add origin <url>`) your git can already authenticate to |
-| `kcia commit --pr` | the above, plus `gh` installed and `gh auth login` done once |
+| automatic branching, `kcia branch start`, `kcia done` | a git worktree (`git init` / a clone) and `user.name` + `user.email` set |
+| `kcia done --push` | a remote (`git remote add origin <url>`) your git can already authenticate to |
+| `kcia done --pr` | the above, plus `gh` installed and `gh auth login` done once |
 
 kcia stores no token and reads no credential. `kcia doctor` reports the branch, the detected
 base branch and whether a remote exists.
 
 ### 8. Session history
 
-`kcia commit` prints a reminder, but logging is a separate, explicit step — a session can be
+`kcia done` prints a reminder, but logging is a separate, explicit step — a session can be
 worth recording before you have anything to commit at all:
 
 ```bash
@@ -565,7 +565,7 @@ kcia session log --title "Add the commit flow" \
 Every entry is one JSON line appended to `.ai/history/sessions.jsonl` — title, summary,
 decisions, the files touched, and the commit SHA when there is one. Unlike the rest of `.ai/`,
 this file **is meant to be committed**: it is the durable record of what changed and why,
-readable by a human or by a future agent looking for context. `kcia init` keeps it out of
+readable by a human or by a future agent looking for context. `kcia start` keeps it out of
 `.gitignore` on purpose, while `.ai/local/`, `.ai/cache/` and `.ai/generated/` stay ignored.
 
 Search runs against a local index at `.ai/local/history.sqlite3`, rebuilt from the JSONL
@@ -676,7 +676,7 @@ integrations:
     project_keys: [PROJ, INFRA]
 ```
 
-Those edits survive `kcia init` — the manifest keeps whatever `integrations` block it
+Those edits survive `kcia start` — the manifest keeps whatever `integrations` block it
 already had. This only controls *classification*: with `project_keys: [PROJ]`, a bare
 `PROJ-123` is read as an issue rather than as prompt text.
 
@@ -763,7 +763,7 @@ If the control plane version changed, regenerate guidance in each project:
 
 ```bash
 cd /path/to/your/project
-kcia init --yes          # idempotent — rewrites only what changed
+kcia start --yes          # idempotent — rewrites only what changed
 ```
 
 Or, if you only need to refresh detection:
@@ -788,7 +788,7 @@ In a project where generated output looks stale:
 ```bash
 cd /path/to/your/project
 rm -rf .ai/generated .ai/cache
-kcia init --yes
+kcia start --yes
 ```
 
 Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours.
@@ -863,7 +863,7 @@ Concretely, kcia:
 | Per-repo state | `<your project>/.ai/` | partly — see below |
 
 Inside a project you work on, **the regenerable output kcia writes is not committed**.
-`kcia init` adds it to that project's `.gitignore` for you:
+`kcia start` adds it to that project's `.gitignore` for you:
 
 ```gitignore
 # kcia — generated, do not commit
@@ -877,7 +877,7 @@ AGENTS.md
 ```
 
 So a teammate cloning your project sees none of the generated adapters or the local index;
-they run `kcia init` once and get their own. `.ai/manifest.yaml`, `.ai/context/project.md`
+they run `kcia start` once and get their own. `.ai/manifest.yaml`, `.ai/context/project.md`
 and `.ai/history/sessions.jsonl` are deliberately **not** in that list — the manifest and
 `project.md` so the whole team detects the same profiles and shares the same project facts,
 and the session log (see [Session history](#8-session-history)) because it is meant to be a
@@ -925,7 +925,7 @@ flowchart TD
 ```
 your project/          ~/tools/kcia/              provider CLI
 ─────────────          ─────────────              ────────────
-kcia init         →    detect + control-plane  →  (no model yet)
+kcia start         →    detect + control-plane  →  (no model yet)
 kcia task init    →    session.json
 kcia wave run     →    compose prompt        →    claude / cursor-agent
                        write prompt.md            ↓
@@ -937,7 +937,7 @@ kcia wave run     →    compose prompt        →    claude / cursor-agent
 ### 1. Profiles decide which guidance applies where
 
 A **profile** is a data package for one technology: detection rules, shell commands,
-coding references, and boolean rules. `kcia init` runs detection over the repository and
+coding references, and boolean rules. `kcia start` runs detection over the repository and
 records the result in `.ai/manifest.yaml`, mapping each profile to the paths it owns:
 
 ```yaml
@@ -967,10 +967,10 @@ detect:
     evidence: "pubspec.yaml with no Flutter SDK dependency"
 ```
 
-### 2. What `kcia init` puts in your project
+### 2. What `kcia start` puts in your project
 
-The table is in [step 4](#what-init-puts-in-your-project). What deserves explaining is
-`project.md`, the one file `init` seeds and then never overwrites: it holds the facts it can
+The table is in [step 4](#what-start-puts-in-your-project). What deserves explaining is
+`project.md`, the one file `start` seeds and then never overwrites: it holds the facts it can
 verify — stack and SDK, platforms, key dependencies, entry point and source directories (or,
 for a workspace, its member packages) — and leaves the rest to you.
 
@@ -1204,13 +1204,13 @@ Being honest about what the code does not yet do:
 
 | Area | Commands / features |
 |---|---|
-| Project setup | `kcia init` — detection, manifest, bundles, adapters, gitignore |
+| Project setup | `kcia start` — detection, manifest, bundles, adapters, gitignore |
 | Profiles | `profile list/show/detect/validate/scaffold`, inheritance, packs, resolution |
 | Agents | `agent set/show/swap` — Claude and Cursor adapters |
 | Tasks | `task init/show/fetch/answer/abort` — `--scope` for path-limited profiles, Jira issues fetched into context |
 | Waves | `wave list/run/approve/plan/retry/skip/logs` — session, lock, prompt composition, validation |
 | Diagnostics | `doctor` — toolchain, provider install and auth, agent and repo readiness |
 | MCP | `mcp catalog/add/remove/list` — per-repo servers with per-role gating |
-| Git | `branch start/base`, `commit` — git-flow branching and the confirmed commits that close a task |
+| Git | `branch start/base`, `done` — git-flow branching and the confirmed commits that close a task |
 
 **Not yet implemented** — these commands exit 1: `kcia sync`, `kcia ask`, `kcia auth`.

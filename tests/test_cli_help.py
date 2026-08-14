@@ -10,7 +10,7 @@ def test_help_lists_commands() -> None:
     assert result.exit_code == 0
     output = result.stdout
     for command in [
-        "init",
+        "start",
         "task",
         "wave",
         "agent",
