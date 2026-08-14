@@ -11,6 +11,7 @@ waves:
     requires: []
     description: "Understand the problem and scope the work."
     can_ask_questions: true
+    include_history: true
     reference_tags: [coding, monorepo]
     prompt_template: understanding.md.j2
 

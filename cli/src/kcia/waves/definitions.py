@@ -35,6 +35,7 @@ class WaveDefinition:
     reference_tags: tuple[str, ...] | None = None
     requires_approval: bool = False
     approval_shows: str | None = None
+    include_history: bool = False
 
 
 def waves_root() -> Path:
@@ -80,6 +81,7 @@ def load_waves() -> list[WaveDefinition]:
                 reference_tags=reference_tags,
                 requires_approval=bool(raw.get("requires_approval", False)),
                 approval_shows=raw.get("approval_shows"),
+                include_history=bool(raw.get("include_history", False)),
             )
         )
     return sorted(waves, key=lambda wave: wave.order)

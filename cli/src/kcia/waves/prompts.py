@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
@@ -70,6 +71,9 @@ def build_prompt_with_stats(
     # writes .ai/context/task.md, so relying on that file alone runs every wave with no
     # problem statement at all.
     add_section("task-statement", _task_statement(session))
+
+    history_content = _related_history(session) if wave.include_history else ""
+    add_section("related-history", history_content)
 
     project_context = _read_context_file(repo_root, "project.md")
     add_section("project-context", project_context)
@@ -208,7 +212,7 @@ def _rules_section(resolved: ResolvedProfile) -> str:
 def _references_for_wave(
     resolved: ResolvedProfile, wave: WaveDefinition
 ) -> list[ReferenceEntry]:
-    """Filtra por tags. `wave.reference_tags is None` => todas."""
+    """Filter by tags. `wave.reference_tags is None` => all references."""
     if wave.reference_tags is None:
         return resolved.references
     if not wave.reference_tags:
@@ -257,3 +261,51 @@ def _read_context_file(repo_root: Path, name: str) -> str:
     if not path.is_file():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _history_query(session: Session) -> str:
+    import re
+
+    task = session.task
+    text = task.get("prompt") or task.get("title") or ""
+    words = re.findall(r"[A-Za-z0-9]+", text)
+    return " ".join(words[:8])
+
+
+def _related_history(session: Session, *, limit: int = 3) -> str:
+    from kcia.history import index
+    from kcia.history import log as history_log
+
+    if not history_log.log_path(session.repo_root).is_file():
+        return ""
+    query = _history_query(session)
+    if not query:
+        return ""
+    try:
+        terms = query.split()
+        seen: set[str] = set()
+        hits = []
+        for term in terms:
+            for hit in index.search(session.repo_root, term, limit=limit):
+                if hit.id in seen:
+                    continue
+                seen.add(hit.id)
+                hits.append(hit)
+                if len(hits) >= limit:
+                    break
+            if len(hits) >= limit:
+                break
+    except Exception:
+        return ""
+    if not hits:
+        return ""
+    parts = ["## Related history\n"]
+    for hit in hits:
+        data = json.loads(hit.raw_json)
+        line = f"- {hit.timestamp} — {hit.title}"
+        summary = (data.get("summary") or "").strip().splitlines()
+        if summary:
+            line += f" — {summary[0][:120]}"
+        parts.append(line)
+    parts.append("")
+    return "\n".join(parts)
