@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from kcia.git.commit import (
     is_plan_path,
     plan_commits,
 )
+from kcia.history import log as history_log
 from kcia.main import app
 from kcia.waves.session import Session
 
@@ -159,3 +162,68 @@ def test_unrelated_staged_files_are_not_swept_into_the_commit(worked: Path, monk
     # `unrelated.txt` is code too, so it lands in the code commit — what must not
     # happen is regenerable `.ai/local` output being committed.
     assert ".ai/local/session.json" not in files
+
+
+def _read_session_log(repo: Path) -> list[dict]:
+    path = repo / ".ai" / "history" / "sessions.jsonl"
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def test_done_auto_logs_session_with_task_id(worked: Path, monkeypatch) -> None:
+    session = Session.create(
+        worked, text="IP-116", mode="ticket", ticket_key="IP-116", title="add the flow"
+    )
+    task_id = session.task["id"]
+    monkeypatch.chdir(worked)
+    result = runner.invoke(app, ["done", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "Session saved:" in result.output
+    assert re.search(r"Session saved: \d{8}T\d{6}Z-[0-9a-f]{6}", result.output)
+    assert "Tip: run" not in result.output
+
+    entries = _read_session_log(worked)
+    assert len(entries) == 1
+    assert entries[0]["task_id"] == task_id
+    assert entries[0]["title"] == "add the flow"
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=worked,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert entries[0]["commit_sha"] == head_sha
+
+
+def test_done_auto_logs_session_without_active_task(worked: Path, monkeypatch) -> None:
+    session_path = worked / ".ai" / "local" / "session.json"
+    session_path.unlink()
+    monkeypatch.chdir(worked)
+    result = runner.invoke(app, ["done", "--yes", "add the loader"])
+    assert result.exit_code == 0, result.output
+    assert "Session saved:" in result.output
+
+    entries = _read_session_log(worked)
+    assert len(entries) == 1
+    assert entries[0]["title"] == "add the loader"
+    assert entries[0]["task_id"] is None
+
+
+def test_done_session_log_failure_prints_fallback(worked: Path, monkeypatch) -> None:
+    session = Session.create(
+        worked, text="IP-116", mode="ticket", ticket_key="IP-116", title="add the flow"
+    )
+    task_id = session.task["id"]
+
+    def _fail_append(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(history_log, "append_entry", _fail_append)
+    monkeypatch.chdir(worked)
+    result = runner.invoke(app, ["done", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "Session not saved (disk full)" in result.output
+    assert f'kcia session log --title "add the flow" --task-id {task_id}' in result.output
+    assert "--commit" in result.output

@@ -26,6 +26,7 @@ from kcia.git.repo import (
     stage,
     unstage_all,
 )
+from kcia.history import index, log
 from kcia.waves.definitions import load_waves
 from kcia.waves.session import Session
 
@@ -79,6 +80,40 @@ def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> None:
         typer.echo(f"gh pr create failed: {(result.stderr or result.stdout).strip()}")
         return
     typer.echo(result.stdout.strip())
+
+
+def _auto_log_session(
+    repo: Path,
+    session: Session | None,
+    subject: str,
+    branch: str,
+    written: list[tuple[str, str]],
+) -> None:
+    """Log this `done` run to `.ai/history/` automatically, reusing the task's own id."""
+    title = (session.task.get("title") if session else None) or subject
+    task_id = session.task.get("id") if session else None
+    commit_sha = written[-1][0] if written else None
+    try:
+        entry = log.entry_from_git(
+            repo,
+            title=title,
+            summary="",
+            decisions=[],
+            files=None,
+            commit_sha=commit_sha,
+            task_id=task_id,
+        )
+        log.append_entry(repo, entry)
+        index.sync(repo, entry)
+    except OSError as exc:
+        typer.echo(
+            f"Session not saved ({exc}). Run manually: "
+            f'kcia session log --title "{title}"'
+            + (f" --task-id {task_id}" if task_id else "")
+            + (f" --commit {commit_sha}" if commit_sha else "")
+        )
+        return
+    typer.echo(f"Session saved: {entry.id}")
 
 
 def commit_command(
@@ -168,7 +203,7 @@ def commit_command(
         session.save()
 
     if written:
-        typer.echo("Tip: run `kcia session log --title ...` to record this work in .ai/history/.")
+        _auto_log_session(repo, session, resolved_subject, branch, written)
 
     if not (push or pr):
         return

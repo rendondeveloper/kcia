@@ -3,6 +3,17 @@
 Two versions are tracked independently. CLI entries are headed `## X.Y.Z`; control-plane
 entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
 
+## 0.6.0 — 2026-08-15
+
+### CLI
+
+- `kcia done` now logs the session automatically after committing, reusing the active
+  task's id and the commit SHA(s) it just wrote — `kcia session log` no longer has to be
+  run by hand. Prints `Session saved: <id>` on success, or a fallback manual command if
+  logging fails.
+
+---
+
 ## 0.4.1 — 2026-08-14
 
 ### CLI
