@@ -26,10 +26,12 @@ from kcia.git.repo import (
     stage,
     unstage_all,
 )
+from kcia.history import index, log
 from kcia.waves.definitions import load_waves
 from kcia.waves.session import Session
 
 MAX_LISTED_PATHS = 12
+_NON_ENGLISH_CHARS = frozenset("ñÑ¿¡")
 
 
 def _session(repo: Path) -> Session | None:
@@ -62,6 +64,52 @@ def _render(commits: list[PlannedCommit], branch: str) -> None:
         if extra > 0:
             typer.echo(f"      … and {extra} more file(s)")
     typer.echo("")
+
+
+def _files_from_planned(commits: list[PlannedCommit]) -> list[dict[str, str]]:
+    seen: set[str] = set()
+    files: list[dict[str, str]] = []
+    for planned in commits:
+        for path in planned.paths:
+            if path not in seen:
+                seen.add(path)
+                files.append({"path": path, "change": "modified"})
+    return files
+
+
+def _auto_log_session(
+    repo: Path,
+    *,
+    title: str,
+    commits: list[PlannedCommit],
+    commit_sha: str,
+    task_id: str | None,
+) -> None:
+    if any(char in _NON_ENGLISH_CHARS for char in title):
+        typer.echo(
+            "Session was not saved: session history must be written in English "
+            f"(found non-English characters in: {title!r})."
+        )
+        return
+    try:
+        entry = log.entry_from_git(
+            repo,
+            title=title,
+            summary="",
+            decisions=[],
+            files=_files_from_planned(commits),
+            commit_sha=commit_sha,
+            task_id=task_id,
+        )
+        log.append_entry(repo, entry)
+        index.sync(repo, entry)
+    except OSError as exc:
+        typer.echo(f"Session was not saved: {exc}")
+        return
+    except Exception as exc:  # noqa: BLE001 - index failure must not undo a successful done
+        typer.echo(f"Session was not saved: {exc}")
+        return
+    typer.echo(f"Session {entry.id} saved.")
 
 
 def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> None:
@@ -105,7 +153,8 @@ def commit_command(
     """Review and write the commits that close the task.
 
     Nothing is written until you confirm: the commits, their messages and the
-    exact files in each are printed first.
+    exact files in each are printed first. On success, the work is also appended
+    to `.ai/history/sessions.jsonl` automatically.
     """
     repo = load_repo()
     session = _session(repo)
@@ -168,7 +217,14 @@ def commit_command(
         session.save()
 
     if written:
-        typer.echo("Tip: run `kcia session log --title ...` to record this work in .ai/history/.")
+        task_id = session.task.get("id") if session is not None else None
+        _auto_log_session(
+            repo,
+            title=resolved_subject,
+            commits=commits,
+            commit_sha=written[-1][0],
+            task_id=task_id,
+        )
 
     if not (push or pr):
         return

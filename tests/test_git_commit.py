@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from kcia.git.commit import (
     is_plan_path,
     plan_commits,
 )
+from kcia.history import log as history_log
 from kcia.main import app
 from kcia.waves.session import Session
 
@@ -122,6 +124,30 @@ def test_cli_writes_both_commits_after_confirmation(worked: Path, monkeypatch) -
     assert log(worked)[:2] == [
         "feat: IP-116 - add the flow",
         "docs: IP-116 - plan — add the flow",
+    ]
+    assert "Session " in result.output and " saved." in result.output
+    history_path = worked / ".ai" / "history" / "sessions.jsonl"
+    assert history_path.is_file()
+    entry = json.loads(history_path.read_text(encoding="utf-8").strip())
+    assert entry["title"] == "add the flow"
+    assert entry["task_id"] is not None
+    assert {item["path"] for item in entry["files"]} == {".ai/context/plan.md", "src/app.py"}
+
+
+def test_cli_survives_session_log_failure(worked: Path, monkeypatch) -> None:
+    Session.create(worked, text="add the flow", mode="prompt", title="add the flow")
+    monkeypatch.chdir(worked)
+
+    def _fail_append(*_args, **_kwargs):
+        raise OSError("read-only filesystem")
+
+    monkeypatch.setattr(history_log, "append_entry", _fail_append)
+    result = runner.invoke(app, ["done", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "Session was not saved: read-only filesystem" in result.output
+    assert log(worked)[:2] == [
+        "feat: add the flow",
+        "docs: plan — add the flow",
     ]
 
 

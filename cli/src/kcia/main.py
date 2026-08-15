@@ -40,7 +40,10 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(branch_app, name="branch")
 app.add_typer(mcp_app, name="mcp")
 
-app.command("done", help="Review and write the commits that close the task.")(commit_command)
+app.command(
+    "done",
+    help="Review and write the commits that close the task; session history is saved automatically.",
+)(commit_command)
 app.command("doctor", help="Validate local setup and repository configuration.")(doctor)
 app.command("ask", help="Run a direct query without creating a task.")(ask)
 app.command("sync", help="Sync the control plane and re-render adapters.")(sync)
