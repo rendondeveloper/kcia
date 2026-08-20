@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import threading
 from typing import Callable
 
 from kcia.config import ResolvedAgent, resolve_agents
@@ -24,6 +26,16 @@ from kcia.waves.definitions import WaveDefinition, get_wave, load_waves
 from kcia.waves.prompts import build_prompt, build_prompt_with_stats
 from kcia.waves.session import Session, context_dir, load_manifest, runs_dir
 from kcia.waves.validation import build_validation_plan, run_validation
+from kcia.waves.plan_execution import (
+    ExecutionBlockError,
+    ProfileExecution,
+    parse_execution_block,
+    validate_disjoint_roots,
+    validate_execution_against_manifest,
+)
+
+
+_MULTI_PROFILE_WAVES = {"implementation", "documentation-final"}
 
 
 @dataclass
@@ -45,10 +57,18 @@ class WaveBlocked(Exception):
     resumed with `kcia work answer`.
     """
 
-    def __init__(self, wave: WaveDefinition, reason: str, output_path: Path | None) -> None:
+    def __init__(
+        self,
+        wave: WaveDefinition,
+        reason: str,
+        output_path: Path | None,
+        *,
+        profile_id: str | None = None,
+    ) -> None:
         self.wave = wave
         self.reason = reason
         self.output_path = output_path
+        self.profile_id = profile_id
         super().__init__(f"wave '{wave.id}' is blocked: {reason}")
 
 
@@ -200,6 +220,22 @@ def run_wave(
     wave = get_wave(wave_id)
     check_requires(session, wave, force=force)
     require_approval(session, wave, skip=skip_approval)
+
+    if wave_id in _MULTI_PROFILE_WAVES:
+        executions = _parse_plan_execution_or_empty(session)
+        if executions:
+            return _run_multi_profile_wave(
+                wave_id,
+                session,
+                force=force,
+                validation_error=validation_error,
+                provider_runner=provider_runner,
+                on_wave_start=on_wave_start,
+                skip_approval=skip_approval,
+                should_cancel=should_cancel,
+                on_event=on_event,
+            )
+
     session.clear_stale_lock()
     session.acquire_lock()
 
@@ -394,6 +430,446 @@ def run_wave(
         return WaveResult(wave_id=wave_id, status="failed", error=str(exc), prompt_path=str(prompt_path) if prompt_path else None)
     finally:
         session.release_lock()
+
+
+def _workspace_dirs_for_profile(repo_root: Path, roots: list[str]) -> list[Path]:
+    # We need both:
+    # - the profile's source root(s) (where code edits happen)
+    # - `.ai/` (so roles can read/edit task-plan context when required)
+    #
+    # `execution.roots` are expected to be manifest entries: commonly `<dir>/**`.
+    # For now we map each `<dir>/**` to its `<dir>`.
+    code_workspace: set[Path] = set()
+    if not roots:
+        code_workspace.add(repo_root)
+        return [repo_root, repo_root / ".ai"]
+
+    for root in roots:
+        r = root.strip()
+        if r in {".", "**"}:
+            code_workspace.add(repo_root)
+            continue
+        if r.endswith("/**"):
+            code_workspace.add(repo_root / r[: -len("/**")])
+        else:
+            # Unknown glob shape: be conservative and include repo_root.
+            code_workspace.add(repo_root)
+
+    # Keep `.ai/` last so our default `cwd` points at the code root.
+    code_dirs = sorted(code_workspace)
+    return [*code_dirs, repo_root / ".ai"]
+
+
+def _parse_plan_execution_or_empty(session: Session) -> list[ProfileExecution]:
+    plan_path = context_dir(session.repo_root) / "plan.md"
+    if not plan_path.is_file():
+        return []
+    plan_text = plan_path.read_text(encoding="utf-8")
+    return parse_execution_block(plan_text)
+
+
+def run_wave_for_profile(
+    wave_id: str,
+    session: Session,
+    profile: ProfileExecution,
+    *,
+    force: bool,
+    provider_runner: ProviderRunner | None,
+    validation_error: str | None,
+    on_event: Callable[[StreamEvent], None] | None,
+    should_cancel: Callable[[], bool] | None,
+    save_lock: threading.Lock,
+) -> WaveResult:
+    """Run a single profile instance of an execution wave.
+
+    This is the same basic flow as `run_wave`, but:
+    - prompt composition is restricted to one profile bundle
+    - workspace/cwd are restricted to the profile's declared roots
+    - statuses are recorded under `session.data["profile_runs"]`
+    """
+    wave = get_wave(wave_id)
+
+    # Locking: allow parallel profile threads, but prevent re-entrancy for
+    # the same `(wave_id, profile_id)` pair.
+    with save_lock:
+        session.clear_stale_lock()
+        session.acquire_lock_for(wave_id=wave_id, profile_id=profile.profile_id)
+
+    started_at = _now_iso()
+    with save_lock:
+        attempts = (
+            int(
+                (session.data.get("profile_runs") or {})
+                .get(profile.profile_id, {})
+                .get("waves", {})
+                .get(wave_id, {})
+                .get("attempts", 0)
+            )
+            + 1
+        )
+        session.set_profile_wave_status(
+            profile.profile_id,
+            wave_id,
+            "running",
+            started_at=started_at,
+            attempts=attempts,
+        )
+
+    prompt_path: Path | None = None
+    try:
+        resolved_agents = resolve_agents(session.repo_root)
+        agent = resolved_agents[wave.agent]
+        catalog = load_catalog()
+        if agent.provider not in catalog:
+            raise RuntimeError(f"unknown provider '{agent.provider}'")
+
+        adapter = get_adapter(agent.provider)
+        executable = adapter.locate()
+        if executable is None:
+            entry = catalog[agent.provider]
+            raise RuntimeError(
+                f"provider '{agent.provider}' is not installed. {entry.install_hint}"
+            )
+
+        # Only show the bundle for the profile this thread is editing.
+        prompt, _ = build_prompt_with_stats(
+            wave,
+            session,
+            validation_error=validation_error,
+            active_profile_ids_override=[profile.profile_id],
+        )
+
+        prompt_path = _write_prompt_file(session, f"{wave_id}-{profile.profile_id}", 1, prompt)
+
+        # Rendered per wave: role gates which servers can be used.
+        mcp_config = _render_mcp_config(session, wave, agent.provider)
+        mcp_tools = allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
+
+        workspace_dirs = _workspace_dirs_for_profile(session.repo_root, profile.roots)
+        cwd = workspace_dirs[0]
+
+        req = RunRequest(
+            prompt=prompt,
+            model=agent.model,
+            mcp_config=mcp_config,
+            mcp_tools=mcp_tools,
+            allow_edits=wave.allow_edits,
+            stream=adapter.capabilities.supports_streaming,
+            workspace_dirs=workspace_dirs,
+            session_id=None,
+            resume=False,
+            effort=agent.effort,
+            allowed_tools=None,
+            disallowed_tools=None,
+            cwd=cwd,
+        )
+
+        runner = provider_runner or run_provider
+        # Parallel fan-out currently disables live streaming progress to avoid
+        # terminal line collisions.
+        result = call_provider(runner, adapter, req, on_event, should_cancel)
+        _raise_if_cancelled(wave, result)
+
+        reason = detect_blocked(result.output_text)  # type: ignore[attr-defined]
+        if reason:
+            with save_lock:
+                session.set_profile_wave_status(
+                    profile.profile_id,
+                    wave_id,
+                    "blocked",
+                    finished_at=_now_iso(),
+                    blocked_reason=reason,
+                    prompt_path=str(prompt_path) if prompt_path else None,
+                )
+                blocked_output = _write_blocked_response(
+                    session,
+                    f"{wave_id}-{profile.profile_id}",
+                    int(
+                        (session.data.get("profile_runs") or {})
+                        .get(profile.profile_id, {})
+                        .get("waves", {})
+                        .get(wave_id, {})
+                        .get("attempts", 1)
+                    ),
+                    result.output_text,
+                )
+                session.save()
+            raise WaveBlocked(
+                wave, reason, blocked_output, profile_id=profile.profile_id
+            )
+
+        output_path = _write_wave_outputs_profile(
+            wave=wave,
+            session=session,
+            profile_id=profile.profile_id,
+            output_text=result.output_text,  # type: ignore[attr-defined]
+            wave_id=wave_id,
+        )
+
+        # Validation (implementation wave) is performed per-profile so failures
+        # remain isolated.
+        if wave.validation == "required":
+            manifest = load_manifest(session.repo_root)
+            if manifest is None:
+                raise RuntimeError(
+                    "manifest required for validation but missing; run `kcia init`"
+                )
+
+            plan = build_validation_plan(
+                session,
+                manifest,
+                touched=[session.repo_root],
+                repo_root=session.repo_root,
+            )
+            plan = [step for step in plan if step.profile_id == profile.profile_id]
+
+            retry_limit = 3
+            current_error = validation_error
+            for _ in range(retry_limit):
+                report = run_validation(plan, retry_limit=1)
+                if report.success:
+                    break
+
+                current_error = _format_validation_failures(report)
+                retry_prompt, _ = build_prompt_with_stats(
+                    wave,
+                    session,
+                    validation_error=current_error,
+                    active_profile_ids_override=[profile.profile_id],
+                )
+                with save_lock:
+                    prompt_path = _write_prompt_file(
+                        session,
+                        f"{wave_id}-{profile.profile_id}",
+                        attempts,
+                        retry_prompt,
+                    )
+
+                req = RunRequest(
+                    prompt=retry_prompt,
+                    model=agent.model,
+                    mcp_config=mcp_config,
+                    mcp_tools=mcp_tools,
+                    allow_edits=wave.allow_edits,
+                    stream=adapter.capabilities.supports_streaming,
+                    workspace_dirs=workspace_dirs,
+                    session_id=None,
+                    resume=False,
+                    effort=agent.effort,
+                    allowed_tools=None,
+                    disallowed_tools=None,
+                    cwd=cwd,
+                )
+                result = call_provider(
+                    runner, adapter, req, on_event, should_cancel
+                )
+                _raise_if_cancelled(wave, result)
+                output_path = _write_wave_outputs_profile(
+                    wave=wave,
+                    session=session,
+                    profile_id=profile.profile_id,
+                    output_text=result.output_text,  # type: ignore[attr-defined]
+                    wave_id=wave_id,
+                )
+
+                plan = build_validation_plan(
+                    session,
+                    manifest,
+                    touched=[session.repo_root],
+                    repo_root=session.repo_root,
+                )
+                plan = [
+                    step
+                    for step in plan
+                    if step.profile_id == profile.profile_id
+                ]
+            else:
+                raise RuntimeError(current_error or "validation failed")
+
+        with save_lock:
+            session.set_profile_wave_status(
+                profile.profile_id,
+                wave_id,
+                "completed",
+                finished_at=_now_iso(),
+                output_path=str(output_path) if output_path else None,
+                prompt_path=str(prompt_path) if prompt_path else None,
+            )
+            session.save()
+
+        return WaveResult(
+            wave_id=wave_id,
+            status="completed",
+            output_path=str(output_path) if output_path else None,
+            prompt_path=str(prompt_path) if prompt_path else None,
+        )
+    except WaveBlocked:
+        raise
+    except Exception as exc:
+        with save_lock:
+            session.set_profile_wave_status(
+                profile.profile_id,
+                wave_id,
+                "failed",
+                finished_at=_now_iso(),
+                error=str(exc),
+                prompt_path=str(prompt_path) if prompt_path else None,
+            )
+            session.save()
+        return WaveResult(
+            wave_id=wave_id,
+            status="failed",
+            error=str(exc),
+            prompt_path=str(prompt_path) if prompt_path else None,
+        )
+    finally:
+        with save_lock:
+            session.release_lock_for(wave_id=wave_id, profile_id=profile.profile_id)
+
+
+def _write_wave_outputs_profile(
+    *,
+    wave: WaveDefinition,
+    session: Session,
+    profile_id: str,
+    output_text: str,
+    wave_id: str,
+) -> Path | None:
+    if not output_text.strip():
+        return None
+    if not wave.writes:
+        return None
+    primary = wave.writes[0]
+    target = session.repo_root / primary
+    if wave_id == "documentation-final":
+        # Avoid concurrent writers by using profile-specific files, merged
+        # at the end of the parent wave.
+        target = target.with_name(f"milestones-{profile_id}.md")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not wave.allow_edits or not _context_exists(target):
+        target.write_text(output_text, encoding="utf-8")
+    return target
+
+
+def _merge_documentation_final_milestones(
+    session: Session, profile_ids: list[str]
+) -> Path | None:
+    context = context_dir(session.repo_root)
+    main = context / "milestones.md"
+    chunks: list[str] = []
+    for pid in profile_ids:
+        chunk_path = context / f"milestones-{pid}.md"
+        if not chunk_path.is_file():
+            continue
+        chunks.append(f"## Profile: {pid}\n\n{chunk_path.read_text(encoding='utf-8').strip()}\n")
+    if not chunks:
+        return None
+    main.write_text("\n\n".join(chunks) + "\n", encoding="utf-8")
+    return main
+
+
+def _run_multi_profile_wave(
+    wave_id: str,
+    session: Session,
+    *,
+    force: bool,
+    validation_error: str | None,
+    provider_runner: ProviderRunner | None,
+    on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None,
+    skip_approval: bool,
+    should_cancel: Callable[[], bool] | None,
+    on_event: Callable[[StreamEvent], None] | None,
+) -> WaveResult:
+    executions = _parse_plan_execution_or_empty(session)
+    if not executions:
+        raise RuntimeError(
+            f"missing execution block in plan.md for multi-profile wave {wave_id!r}"
+        )
+
+    manifest = load_manifest(session.repo_root)
+    if manifest is None:
+        raise RuntimeError("manifest required for multi-profile execution but missing; run `kcia init`")
+
+    validate_execution_against_manifest(executions, manifest)
+    validate_disjoint_roots(executions)
+
+    # Shared lock to serialize session json writes across profile threads.
+    save_lock = threading.Lock()
+    profile_ids = [e.profile_id for e in executions]
+
+    # Run parallel: progress streaming is intentionally suppressed for now
+    # because the current WaveProgress assumes a single terminal line.
+    futures = []
+    with ThreadPoolExecutor(max_workers=len(executions) or 1) as pool:
+        for exec_entry in executions:
+            futures.append(
+                pool.submit(
+                    run_wave_for_profile,
+                    wave_id,
+                    session,
+                    exec_entry,
+                    force=force,
+                    provider_runner=provider_runner,
+                    validation_error=validation_error,
+                    on_event=None,
+                    should_cancel=should_cancel,
+                    save_lock=save_lock,
+                )
+            )
+
+        blocked: list[WaveBlocked] = []
+        results: list[WaveResult] = []
+        for fut in futures:
+            try:
+                results.append(fut.result())
+            except WaveBlocked as exc:
+                blocked.append(exc)
+
+    if blocked:
+        first = blocked[0]
+        # Mark the overall wave as blocked so the CLI stops and asks for input.
+        session.set_wave_status(
+            wave_id,
+            "blocked",
+            blocked_reason=first.reason,
+            blocked_profile_id=first.profile_id,
+        )
+        session.save()
+        raise first
+
+    any_failed = any(r.status != "completed" for r in results)
+    if any_failed:
+        # Keep the mixed profile state in `profile_runs`; overall is failed so
+        # the CLI exits non-zero and the user can retry.
+        session.set_wave_status(
+            wave_id,
+            "failed",
+            error=next((r.error for r in results if r.error), None),
+        )
+        session.save()
+        return WaveResult(
+            wave_id=wave_id,
+            status="failed",
+            error=next((r.error for r in results if r.error), None),
+        )
+
+    # Completed: documentation-final needs a merge into the single expected
+    # output file.
+    output_path: Path | None = None
+    if wave_id == "documentation-final":
+        output_path = _merge_documentation_final_milestones(session, profile_ids)
+
+    session.set_wave_status(
+        wave_id,
+        "completed",
+        output_path=str(output_path) if output_path else None,
+    )
+    session.save()
+    return WaveResult(
+        wave_id=wave_id,
+        status="completed",
+        output_path=str(output_path) if output_path else None,
+    )
 
 
 def _raise_if_cancelled(wave: WaveDefinition, result: object) -> None:

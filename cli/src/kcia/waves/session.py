@@ -26,7 +26,7 @@ WaveStatus = Literal[
     "awaiting_manual_completion",
 ]
 
-SESSION_SCHEMA_VERSION = 1
+SESSION_SCHEMA_VERSION = 2
 
 
 def session_path(repo_root: Path) -> Path:
@@ -157,6 +157,7 @@ class Session:
                 "task": task,
                 "active_profiles": active_profiles or [],
                 "waves": _default_wave_states(),
+                "profile_runs": {},
                 "injections": [],
             },
         )
@@ -177,6 +178,30 @@ class Session:
         return self.data.setdefault("waves", _default_wave_states())
 
     def wave_status(self, wave_id: str) -> str:
+        # When a wave is parallelizable, the overall status is derived from
+        # per-profile wave states.
+        if wave_id in {"implementation", "documentation-final"}:
+            profile_runs = self.data.get("profile_runs") or {}
+            states: list[str] = []
+            for profile_run in profile_runs.values():
+                waves = profile_run.get("waves") or {}
+                state = waves.get(wave_id)
+                if isinstance(state, dict) and "status" in state:
+                    states.append(str(state["status"]))
+
+            if not states:
+                return self.waves.get(wave_id, {}).get("status", "pending")
+
+            if "blocked" in states:
+                return "blocked"
+            if any(s == "failed" for s in states):
+                return "failed"
+            if any(s == "running" for s in states):
+                return "running"
+            if all(s == "completed" for s in states):
+                return "completed"
+            return "pending"
+
         return self.waves.get(wave_id, {}).get("status", "pending")
 
     def set_wave_status(self, wave_id: str, status: WaveStatus, **extra: Any) -> None:
@@ -184,7 +209,40 @@ class Session:
         state["status"] = status
         state.update(extra)
 
+    def set_profile_wave_status(
+        self, profile_id: str, wave_id: str, status: WaveStatus, **extra: Any
+    ) -> None:
+        profile_runs: dict[str, Any] = self.data.setdefault("profile_runs", {})
+        profile_run = profile_runs.setdefault(profile_id, {"waves": {}})
+        waves = profile_run.setdefault("waves", {})
+        state = waves.setdefault(wave_id, {"status": "pending", "attempts": 0})
+        state["status"] = status
+        state.update(extra)
+        self.save()
+
     def acquire_lock(self) -> None:
+        self.acquire_lock_for()
+
+    def acquire_lock_for(
+        self, wave_id: str | None = None, profile_id: str | None = None
+    ) -> None:
+        if wave_id is not None and profile_id is not None:
+            key = f"{wave_id}:{profile_id}"
+            locks = self.data.setdefault("locks", {})
+            existing = locks.get(key)
+            if existing and _is_lock_alive(existing):
+                raise RuntimeError(
+                    f"wave lock held for {key} by pid {existing.get('pid')} "
+                    f"since {existing.get('acquired_at')}"
+                )
+            locks[key] = {
+                "pid": os.getpid(),
+                "tty": os.environ.get("TTY", ""),
+                "acquired_at": _now_iso(),
+            }
+            self.save()
+            return
+
         if self.is_locked():
             holder = self.data.get("lock", {})
             raise RuntimeError(
@@ -198,30 +256,61 @@ class Session:
         self.save()
 
     def release_lock(self) -> None:
+        self.release_lock_for()
+
+    def release_lock_for(
+        self, wave_id: str | None = None, profile_id: str | None = None
+    ) -> None:
+        if wave_id is not None and profile_id is not None:
+            key = f"{wave_id}:{profile_id}"
+            locks = self.data.get("locks") or {}
+            locks.pop(key, None)
+            if locks:
+                self.data["locks"] = locks
+            else:
+                self.data.pop("locks", None)
+            self.save()
+            return
+
         self.data.pop("lock", None)
         self.save()
 
     def is_locked(self) -> bool:
         lock = self.data.get("lock")
-        if not lock:
-            return False
-        pid = lock.get("pid")
-        if not isinstance(pid, int):
-            return False
-        try:
-            os.kill(pid, 0)
-        except OSError:
-            self.data.pop("lock", None)
-            self.save()
-            return False
-        return True
+        if lock and _is_lock_alive(lock):
+            return True
+
+        locks = self.data.get("locks") or {}
+        for record in locks.values():
+            if record and _is_lock_alive(record):
+                return True
+
+        return False
 
     def clear_stale_lock(self) -> bool:
-        if not self.data.get("lock"):
-            return False
-        if self.is_locked():
-            return False
-        return True
+        changed = False
+        if self.data.get("lock") and not _is_lock_alive(self.data["lock"]):
+            self.data.pop("lock", None)
+            changed = True
+
+        locks = self.data.get("locks") or {}
+        stale_keys: list[str] = []
+        for key, record in locks.items():
+            if not record or _is_lock_alive(record):
+                continue
+            stale_keys.append(key)
+        for key in stale_keys:
+            locks.pop(key, None)
+            changed = True
+
+        if changed:
+            if locks:
+                self.data["locks"] = locks
+            else:
+                self.data.pop("locks", None)
+            self.save()
+
+        return changed
 
     def is_approved(self, wave_id: str) -> bool:
         return bool(self.data.get("approvals", {}).get(wave_id))
@@ -245,3 +334,15 @@ class Session:
         path = session_path(self.repo_root)
         if path.is_file():
             path.unlink()
+
+
+def _is_lock_alive(lock: dict[str, object]) -> bool:
+    pid = lock.get("pid")
+    if not isinstance(pid, int):
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+

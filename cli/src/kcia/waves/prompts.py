@@ -33,6 +33,8 @@ def build_prompt_with_stats(
     session: Session,
     *,
     validation_error: str | None = None,
+    active_profile_ids_override: list[str] | None = None,
+    plan_context_override: str | None = None,
 ) -> tuple[str, PromptStats]:
     repo_root = session.repo_root
     sections: list[str] = []
@@ -80,7 +82,11 @@ def build_prompt_with_stats(
 
     registry = load_registry(repo_root)
     manifest = load_manifest(repo_root)
-    profile_ids = _active_profile_ids(session, manifest, repo_root)
+    profile_ids = (
+        active_profile_ids_override
+        if active_profile_ids_override is not None
+        else _active_profile_ids(session, manifest, repo_root)
+    )
 
     repo_map = ""
     if manifest is not None:
@@ -136,9 +142,12 @@ def build_prompt_with_stats(
         ticket_context = _read_context_file(repo_root, "ticket.md")
     add_section("ticket-context", ticket_context)
 
-    plan_context = ""
-    if wave.id in {"implementation", "documentation-final"}:
-        plan_context = _read_context_file(repo_root, "plan.md")
+    if plan_context_override is not None:
+        plan_context = plan_context_override
+    else:
+        plan_context = ""
+        if wave.id in {"implementation", "documentation-final"}:
+            plan_context = _read_context_file(repo_root, "plan.md")
     add_section("plan-context", plan_context)
 
     validation_error_section = ""

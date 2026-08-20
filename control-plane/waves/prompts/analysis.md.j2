@@ -3,3 +3,13 @@
 Design the solution. Declare active profiles, validation strategy, and risks.
 
 Output a structured implementation plan suitable for the builder agent.
+
+Append a fenced YAML block at the very end:
+```yaml
+execution:
+  profiles:
+    - id: <profile_id>
+      roots: ["<dir>/**"]
+      summary: "<what this profile must do>"
+```
+Use only real profile ids from `.ai/manifest.yaml`.
