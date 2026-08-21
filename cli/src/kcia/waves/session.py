@@ -198,7 +198,7 @@ class Session:
                 return "failed"
             if any(s == "running" for s in states):
                 return "running"
-            if all(s == "completed" for s in states):
+            if all(s in ("completed", "skipped") for s in states):
                 return "completed"
             return "pending"
 

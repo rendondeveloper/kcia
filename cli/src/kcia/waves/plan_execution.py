@@ -20,6 +20,7 @@ class ProfileExecution:
     profile_id: str
     roots: list[str]
     summary: str | None = None
+    depends_on: tuple[str, ...] = ()
 
 
 class ExecutionBlockError(ValueError):
@@ -68,11 +69,22 @@ def parse_execution_block(plan_text: str) -> list[ProfileExecution]:
                 )
             roots_str = [str(r) for r in roots]
             summary = item.get("summary")
+            raw_deps = item.get("depends_on") or []
+            if not isinstance(raw_deps, list):
+                raise ExecutionBlockError(
+                    f"execution profiles[{profile_id!r}].depends_on must be a list"
+                )
+            depends_on = tuple(
+                str(dep).strip()
+                for dep in raw_deps
+                if isinstance(dep, str) and dep.strip()
+            )
             profiles.append(
                 ProfileExecution(
                     profile_id=profile_id.strip(),
                     roots=roots_str,
                     summary=str(summary) if summary is not None else None,
+                    depends_on=depends_on,
                 )
             )
 
@@ -155,4 +167,77 @@ def validate_disjoint_roots(executions: list[ProfileExecution]) -> None:
                             f"Overlapping execution roots between {a!r} and {b!r}: "
                             f"{ra!r} overlaps {rb!r}"
                         )
+
+
+def validate_execution_dependencies(executions: list[ProfileExecution]) -> None:
+    """Raise when a dependency references an unknown profile or forms a cycle."""
+    profile_ids = {entry.profile_id for entry in executions}
+    for entry in executions:
+        for dep in entry.depends_on:
+            if dep not in profile_ids:
+                raise ExecutionBlockError(
+                    f"Unknown dependency {dep!r} in execution profile "
+                    f"{entry.profile_id!r}"
+                )
+
+    graph = {entry.profile_id: list(entry.depends_on) for entry in executions}
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> None:
+        if node in visiting:
+            raise ExecutionBlockError(
+                f"Cyclic dependency in execution block involving {node!r}"
+            )
+        if node in visited:
+            return
+        visiting.add(node)
+        for dep in graph.get(node, []):
+            visit(dep)
+        visiting.remove(node)
+        visited.add(node)
+
+    for profile_id in graph:
+        visit(profile_id)
+
+
+def execution_batches(
+    executions: list[ProfileExecution],
+) -> list[list[ProfileExecution]]:
+    """Group profile executions into ordered batches by dependency depth."""
+    remaining = {entry.profile_id: entry for entry in executions}
+    satisfied: set[str] = set()
+    batches: list[list[ProfileExecution]] = []
+
+    while remaining:
+        ready = [
+            entry
+            for entry in remaining.values()
+            if all(dep in satisfied for dep in entry.depends_on)
+        ]
+        if not ready:
+            raise ExecutionBlockError("Cyclic dependency in execution block")
+        batches.append(ready)
+        for entry in ready:
+            satisfied.add(entry.profile_id)
+            del remaining[entry.profile_id]
+
+    return batches
+
+
+_INTEGRATION_CHECKLIST_RE = re.compile(
+    r"^##\s+Integration checklist\s*$([\s\S]*?)(?=^##\s+|\Z)",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def parse_integration_checklist(plan_text: str) -> str | None:
+    """Return the body of the Integration checklist section in plan.md, if any."""
+    if not plan_text.strip():
+        return None
+    match = _INTEGRATION_CHECKLIST_RE.search(plan_text)
+    if not match:
+        return None
+    body = (match.group(1) or "").strip()
+    return body or None
 

@@ -4,12 +4,23 @@ Design the solution. Declare active profiles, validation strategy, and risks.
 
 Output a structured implementation plan suitable for the builder agent.
 
-Append a fenced YAML block at the very end:
+When multiple profiles will change in parallel, append a fenced YAML block at the very end:
 ```yaml
 execution:
   profiles:
     - id: <profile_id>
       roots: ["<dir>/**"]
       summary: "<what this profile must do>"
+    - id: <other_profile_id>
+      roots: ["<other_dir>/**"]
+      summary: "<what this profile must do>"
+      depends_on: [<profile_id>]
 ```
 Use only real profile ids from `.ai/manifest.yaml`.
+
+Dependency rules:
+- Default to no `depends_on` (full parallel execution).
+- Only declare `depends_on` when one profile's work exposes a contract another profile consumes in the same task (e.g. an API response shape a client must parse).
+- Every id in `depends_on` must appear in the same `execution.profiles` list.
+
+When you declare any `depends_on` edge (or otherwise document that one profile's change affects a contract another profile relies on), also add a markdown section titled `## Integration checklist` in the plan body listing the concrete contracts to verify after every profile finishes (e.g. "response field `X` returned by backend-dart matches the field mobile-flutter parses").

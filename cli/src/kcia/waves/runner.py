@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -29,9 +29,12 @@ from kcia.waves.validation import build_validation_plan, run_validation
 from kcia.waves.plan_execution import (
     ExecutionBlockError,
     ProfileExecution,
+    execution_batches,
     parse_execution_block,
+    parse_integration_checklist,
     validate_disjoint_roots,
     validate_execution_against_manifest,
+    validate_execution_dependencies,
 )
 
 
@@ -768,6 +771,86 @@ def _merge_documentation_final_milestones(
     return main
 
 
+def _run_integration_check(
+    session: Session,
+    *,
+    provider_runner: ProviderRunner | None,
+    on_event: Callable[[StreamEvent], None] | None,
+    should_cancel: Callable[[], bool] | None,
+) -> Path | None:
+    """Run a single cross-profile integration check when plan.md declares one."""
+    plan_path = context_dir(session.repo_root) / "plan.md"
+    if not plan_path.is_file():
+        return None
+    plan_text = plan_path.read_text(encoding="utf-8")
+    checklist = parse_integration_checklist(plan_text)
+    if not checklist:
+        return None
+
+    wave = replace(
+        get_wave("documentation-final"),
+        prompt_template="integration-check.md.j2",
+        reference_tags=(),
+    )
+    resolved_agents = resolve_agents(session.repo_root)
+    agent = resolved_agents[wave.agent]
+    catalog = load_catalog()
+    if agent.provider not in catalog:
+        raise RuntimeError(f"unknown provider '{agent.provider}'")
+
+    adapter = get_adapter(agent.provider)
+    executable = adapter.locate()
+    if executable is None:
+        entry = catalog[agent.provider]
+        raise RuntimeError(
+            f"provider '{agent.provider}' is not installed. {entry.install_hint}"
+        )
+
+    plan_context = (
+        f"{plan_text.strip()}\n\n"
+        "## Integration checklist (focus)\n\n"
+        f"{checklist}\n"
+    )
+    prompt, _ = build_prompt_with_stats(
+        wave,
+        session,
+        plan_context_override=plan_context,
+    )
+    prompt_path = _write_prompt_file(session, "integration-check", 1, prompt)
+
+    mcp_config = _render_mcp_config(session, wave, agent.provider)
+    mcp_tools = allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
+    repo_root = session.repo_root
+    req = RunRequest(
+        prompt=prompt,
+        model=agent.model,
+        mcp_config=mcp_config,
+        mcp_tools=mcp_tools,
+        allow_edits=wave.allow_edits,
+        stream=adapter.capabilities.supports_streaming,
+        workspace_dirs=[repo_root / ".ai", repo_root],
+        session_id=None,
+        resume=False,
+        effort=agent.effort,
+        allowed_tools=None,
+        disallowed_tools=None,
+        cwd=repo_root,
+    )
+
+    runner = provider_runner or run_provider
+    result = call_provider(runner, adapter, req, on_event, should_cancel)
+    _raise_if_cancelled(wave, result)
+
+    output_text = getattr(result, "output_text", "") or ""
+    if not output_text.strip():
+        return None
+
+    target = context_dir(session.repo_root) / "integration-check.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(output_text, encoding="utf-8")
+    return target
+
+
 def _run_multi_profile_wave(
     wave_id: str,
     session: Session,
@@ -792,38 +875,84 @@ def _run_multi_profile_wave(
 
     validate_execution_against_manifest(executions, manifest)
     validate_disjoint_roots(executions)
+    validate_execution_dependencies(executions)
+
+    batches = execution_batches(executions)
 
     # Shared lock to serialize session json writes across profile threads.
     save_lock = threading.Lock()
     profile_ids = [e.profile_id for e in executions]
+    failed_or_blocked_ids: set[str] = set()
 
-    # Run parallel: progress streaming is intentionally suppressed for now
-    # because the current WaveProgress assumes a single terminal line.
-    futures = []
-    with ThreadPoolExecutor(max_workers=len(executions) or 1) as pool:
-        for exec_entry in executions:
-            futures.append(
-                pool.submit(
-                    run_wave_for_profile,
-                    wave_id,
-                    session,
-                    exec_entry,
-                    force=force,
-                    provider_runner=provider_runner,
-                    validation_error=validation_error,
-                    on_event=None,
-                    should_cancel=should_cancel,
-                    save_lock=save_lock,
-                )
+    def _mark_skipped(profile_id: str, reason: str) -> None:
+        with save_lock:
+            session.set_profile_wave_status(
+                profile_id,
+                wave_id,
+                "skipped",
+                finished_at=_now_iso(),
+                skip_reason=reason,
             )
 
-        blocked: list[WaveBlocked] = []
-        results: list[WaveResult] = []
-        for fut in futures:
-            try:
-                results.append(fut.result())
-            except WaveBlocked as exc:
-                blocked.append(exc)
+    # Run in dependency-ordered batches; profiles within a batch stay parallel.
+    blocked: list[WaveBlocked] = []
+    results: list[WaveResult] = []
+    max_workers = max((len(batch) for batch in batches), default=1)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        for batch in batches:
+            to_run: list[ProfileExecution] = []
+            for exec_entry in batch:
+                blocked_deps = [
+                    dep
+                    for dep in exec_entry.depends_on
+                    if dep in failed_or_blocked_ids
+                ]
+                if blocked_deps:
+                    reason = (
+                        "dependency failed or blocked: "
+                        + ", ".join(blocked_deps)
+                    )
+                    _mark_skipped(exec_entry.profile_id, reason)
+                    results.append(
+                        WaveResult(
+                            wave_id=wave_id,
+                            status="skipped",
+                            error=reason,
+                        )
+                    )
+                    continue
+                to_run.append(exec_entry)
+
+            futures: list[tuple[ProfileExecution, object]] = []
+            for exec_entry in to_run:
+                futures.append(
+                    (
+                        exec_entry,
+                        pool.submit(
+                            run_wave_for_profile,
+                            wave_id,
+                            session,
+                            exec_entry,
+                            force=force,
+                            provider_runner=provider_runner,
+                            validation_error=validation_error,
+                            on_event=None,
+                            should_cancel=should_cancel,
+                            save_lock=save_lock,
+                        ),
+                    )
+                )
+
+            for exec_entry, fut in futures:
+                try:
+                    result = fut.result()
+                    results.append(result)
+                    if result.status != "completed":
+                        failed_or_blocked_ids.add(exec_entry.profile_id)
+                except WaveBlocked as exc:
+                    blocked.append(exc)
+                    if exc.profile_id:
+                        failed_or_blocked_ids.add(exc.profile_id)
 
     if blocked:
         first = blocked[0]
@@ -858,6 +987,12 @@ def _run_multi_profile_wave(
     output_path: Path | None = None
     if wave_id == "documentation-final":
         output_path = _merge_documentation_final_milestones(session, profile_ids)
+        _run_integration_check(
+            session,
+            provider_runner=provider_runner,
+            on_event=on_event,
+            should_cancel=should_cancel,
+        )
 
     session.set_wave_status(
         wave_id,

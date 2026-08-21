@@ -6,9 +6,12 @@ import yaml
 from kcia.profiles.schema import Manifest
 from kcia.waves.plan_execution import (
     ExecutionBlockError,
+    execution_batches,
     parse_execution_block,
+    parse_integration_checklist,
     validate_disjoint_roots,
     validate_execution_against_manifest,
+    validate_execution_dependencies,
 )
 from kcia.waves.plan_execution import ProfileExecution
 
@@ -34,6 +37,74 @@ execution:
     assert [e.profile_id for e in executions] == ["backend-dart", "mobile-flutter"]
     assert executions[0].roots == ["services/api/**"]
     assert executions[0].summary == "add the endpoint"
+
+
+def test_parse_execution_block_extracts_depends_on() -> None:
+    plan = """# Plan
+
+```yaml
+execution:
+  profiles:
+    - id: backend-dart
+      roots: ["services/api/**"]
+      summary: "add the endpoint"
+    - id: mobile-flutter
+      roots: ["apps/mobile/**"]
+      summary: "consume the endpoint"
+      depends_on: [backend-dart]
+```
+"""
+    executions = parse_execution_block(plan)
+    assert executions[1].depends_on == ("backend-dart",)
+
+
+def test_parse_integration_checklist_extracts_section() -> None:
+    plan = """# Plan
+
+## Integration checklist
+
+- backend returns field `orderId`
+- mobile parses `orderId`
+
+## Risks
+
+None.
+"""
+    assert parse_integration_checklist(plan) == "- backend returns field `orderId`\n- mobile parses `orderId`"
+
+
+def test_parse_integration_checklist_returns_none_when_missing() -> None:
+    assert parse_integration_checklist("# Plan\n\nNo checklist.") is None
+
+
+def test_validate_execution_dependencies_rejects_unknown_dep() -> None:
+    with pytest.raises(ExecutionBlockError, match="Unknown dependency"):
+        validate_execution_dependencies(
+            [
+                ProfileExecution("a", roots=["x/**"], depends_on=("missing",)),
+            ]
+        )
+
+
+def test_validate_execution_dependencies_rejects_cycles() -> None:
+    with pytest.raises(ExecutionBlockError, match="Cyclic dependency"):
+        validate_execution_dependencies(
+            [
+                ProfileExecution("a", roots=["x/**"], depends_on=("b",)),
+                ProfileExecution("b", roots=["y/**"], depends_on=("a",)),
+            ]
+        )
+
+
+def test_execution_batches_orders_by_dependency() -> None:
+    a = ProfileExecution("a", roots=["x/**"])
+    b = ProfileExecution("b", roots=["y/**"], depends_on=("a",))
+    c = ProfileExecution("c", roots=["z/**"])
+    batches = execution_batches([b, c, a])
+    assert [sorted(e.profile_id for e in batch) for batch in batches] == [
+        ["a", "c"],
+        ["b"],
+    ]
 
 
 def test_parse_execution_block_returns_empty_on_missing_block() -> None:
