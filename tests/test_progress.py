@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import time
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,58 @@ def test_non_tty_emits_plain_lines_without_escapes() -> None:
     lines = output.strip().splitlines()
     assert lines[0] == "implementation · builder · cursor/claude-sonnet-5 — running"
     assert "completed" in lines[1]
+
+
+def test_non_tty_periodic_emits_multiple_status_lines() -> None:
+    buf = io.StringIO()
+    progress = WaveProgress(
+        "implementation",
+        "builder",
+        "cursor",
+        "claude-sonnet-5",
+        stream=buf,
+        enabled=False,
+        periodic_updates=True,
+        periodic_tick=0.05,
+    )
+    progress.start()
+    time.sleep(0.15)
+    progress.handle(ToolCallStart(name="Read", input_preview="lib/main.dart"))
+    time.sleep(0.05)
+    progress.finish()
+
+    output = buf.getvalue()
+    assert "\r" not in output
+    status_lines = [
+        line
+        for line in output.strip().splitlines()
+        if line.startswith("⠋") or line.startswith("⠙") or line.startswith("⠹")
+    ]
+    assert len(status_lines) >= 2
+    assert "running" not in output
+    assert "completed" in output
+
+
+def test_non_tty_periodic_reflects_activity_updates() -> None:
+    clock = {"now": 0.0}
+    buf = io.StringIO()
+    progress = WaveProgress(
+        "implementation",
+        "builder",
+        "cursor",
+        "claude-sonnet-5",
+        stream=buf,
+        enabled=False,
+        periodic_updates=True,
+        periodic_tick=0.01,
+        clock=lambda: clock["now"],
+    )
+    progress.start()
+    progress.handle(FileWrite(path="/repo/lib/b.dart"))
+    time.sleep(0.05)
+    progress.finish()
+
+    assert "writing lib/b.dart" in buf.getvalue()
 
 
 def test_summary_names_wave_agent_and_model() -> None:

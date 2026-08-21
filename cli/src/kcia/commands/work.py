@@ -244,8 +244,9 @@ def _render_approval_gate(gate: ApprovalRequired) -> None:
 class _ProgressReporter:
     """Owns the live status line for the wave currently running."""
 
-    def __init__(self, *, enabled: bool) -> None:
+    def __init__(self, *, enabled: bool, periodic_updates: bool = False) -> None:
         self._enabled = enabled
+        self._periodic_updates = periodic_updates
         self._current: WaveProgress | None = None
 
     def start(self, wave, agent) -> None:  # noqa: ANN001 - callback signature
@@ -254,7 +255,11 @@ class _ProgressReporter:
             typer.echo(f"Wave `{wave.id}` running ({agent.provider}/{agent.model}).")
             return
         self._current = WaveProgress(
-            wave.id, wave.agent, agent.provider, agent.model
+            wave.id,
+            wave.agent,
+            agent.provider,
+            agent.model,
+            periodic_updates=self._periodic_updates,
         )
         self._current.start()
 
@@ -300,6 +305,7 @@ def _execute(
     force: bool,
     quiet: bool,
     yes: bool,
+    periodic_updates: bool = False,
 ) -> None:
     stalled = next(
         (wave for wave in load_waves() if session.wave_status(wave.id) == "blocked"), None
@@ -324,7 +330,9 @@ def _execute(
     if outcome is not None:
         typer.echo(outcome.message)
 
-    reporter = _ProgressReporter(enabled=not quiet)
+    reporter = _ProgressReporter(
+        enabled=not quiet, periodic_updates=periodic_updates
+    )
     run_started = time.monotonic()
 
     with interruptible(on_request=lambda: reporter.note("stopping…")) as cancel:
@@ -699,7 +707,15 @@ def work_approve(
         typer.echo("Run `kcia work` to continue.")
         return
 
-    _execute(session, wave_id=None, until=None, force=False, quiet=quiet, yes=False)
+    _execute(
+        session,
+        wave_id=None,
+        until=None,
+        force=False,
+        quiet=quiet,
+        yes=False,
+        periodic_updates=True,
+    )
 
 
 @app.command("plan")

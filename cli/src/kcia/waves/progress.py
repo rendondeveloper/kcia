@@ -26,6 +26,7 @@ from kcia.usage import format_duration, format_tokens
 
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _TICK = 0.1
+_PERIODIC_TICK = 2.0
 
 
 class WaveProgress:
@@ -48,6 +49,8 @@ class WaveProgress:
         stream: TextIO | None = None,
         enabled: bool | None = None,
         clock: Callable[[], float] | None = None,
+        periodic_updates: bool = False,
+        periodic_tick: float = _PERIODIC_TICK,
     ) -> None:
         self._stream = stream if stream is not None else sys.stderr
         self._tty = enabled if enabled is not None else self._stream.isatty()
@@ -64,6 +67,8 @@ class WaveProgress:
         self._width = 0
         self._started_at: float | None = None
         self._clock = clock or time.monotonic
+        self._periodic_updates = periodic_updates
+        self._periodic_tick = periodic_tick
 
     def __enter__(self) -> WaveProgress:
         self.start()
@@ -75,7 +80,11 @@ class WaveProgress:
     def start(self) -> None:
         self._started_at = self._clock()
         if not self._tty:
-            self._write_line(f"{self._header} — running")
+            if self._periodic_updates:
+                self._thread = threading.Thread(target=self._animate_periodic, daemon=True)
+                self._thread.start()
+            else:
+                self._write_line(f"{self._header} — running")
             return
         self._thread = threading.Thread(target=self._animate, daemon=True)
         self._thread.start()
@@ -139,7 +148,15 @@ class WaveProgress:
             self._animate_once()
             self._stop.wait(_TICK)
 
+    def _animate_periodic(self) -> None:
+        while not self._stop.is_set():
+            self._write_line(self._format_status_line(next(self._spinner)))
+            self._stop.wait(self._periodic_tick)
+
     def _animate_once(self) -> None:
+        self._render(self._format_status_line(next(self._spinner)))
+
+    def _format_status_line(self, spinner: str) -> str:
         elapsed = self.elapsed
         with self._lock:
             activity = self._activity
@@ -148,7 +165,7 @@ class WaveProgress:
         suffix = f"{format_duration(elapsed)} · {calls} tools"
         if tokens:
             suffix += f" · {format_tokens(tokens)} tok"
-        self._render(f"{next(self._spinner)} {self._header} — {activity} · {suffix}")
+        return f"{spinner} {self._header} — {activity} · {suffix}"
 
     def _render(self, text: str) -> None:
         columns = shutil.get_terminal_size((80, 24)).columns
