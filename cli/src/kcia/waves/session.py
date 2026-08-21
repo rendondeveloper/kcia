@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 import yaml
 
+from kcia.git.cycle import close_cycle, load_cycle
 from kcia.profiles.schema import Manifest
 
 TaskMode = Literal["ticket", "prompt"]
@@ -140,6 +141,7 @@ class Session:
         context_dir(repo_root).mkdir(parents=True, exist_ok=True)
         runs_dir(repo_root).mkdir(parents=True, exist_ok=True)
 
+        cycle = load_cycle(repo_root)
         task: dict[str, Any] = {
             "id": new_task_id(),
             "mode": mode,
@@ -147,7 +149,8 @@ class Session:
             "prompt": text if mode == "prompt" else None,
             "title": title or text,
             "created_at": _now_iso(),
-            "branch": None,
+            "branch": cycle.branch if cycle is not None else None,
+            "base_branch": cycle.base_branch if cycle is not None else None,
             "scope": scope or [],
         }
         session = cls(
@@ -331,6 +334,7 @@ class Session:
         self.save()
 
     def abort(self) -> None:
+        close_cycle(self.repo_root)
         path = session_path(self.repo_root)
         if path.is_file():
             path.unlink()

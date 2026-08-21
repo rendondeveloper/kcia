@@ -9,6 +9,7 @@ from typing import Optional
 import typer
 
 from kcia.git.commit import COMMIT_TYPES, infer_commit_type
+from kcia.git.cycle import is_cycle_open, open_cycle
 from kcia.git.flow import (
     BaseBranch,
     branch_name,
@@ -151,6 +152,17 @@ def branch_start(
 ) -> None:
     """Create the git-flow branch for the active task."""
     repo = load_repo()
+    if is_cycle_open(repo):
+        from kcia.git.cycle import load_cycle
+
+        open_branch = load_cycle(repo)
+        if open_branch is not None:
+            typer.echo(
+                f"Work cycle already open on `{open_branch.branch}`. "
+                "Run `kcia done` to close it before starting another branch."
+            )
+            raise typer.Exit(code=1)
+
     ticket, title = task_context(repo)
 
     text = subject or title
@@ -198,3 +210,4 @@ def branch_start(
     task["branch"] = target
     task["base_branch"] = base_branch
     session.save()
+    open_cycle(repo, target, base_branch, task_id=task.get("id"))

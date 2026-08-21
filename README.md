@@ -361,6 +361,46 @@ Use `--no-run` to only record it, `--note` to attach a reason, and `kcia work pl
 reprint the plan at any time. The paused run exits with code `2`, distinct from a real
 failure (`1`), so scripts can tell "waiting for a human" from "broken".
 
+#### When something was missed or not fixed
+
+The waves can finish and the profile validation (`test`, `lint`, `verify`) can pass while
+the original bug or feature is still wrong — kcia does not re-check your manual acceptance
+criteria. The work **cycle** (same git branch under git flow, same active session) stays open
+until you run `kcia done` or `kcia work abort`.
+
+If the builder did not finish what you needed:
+
+```bash
+kcia work answer "Still broken: tapping Save does nothing on the profile screen."
+kcia work retry implementation
+```
+
+`answer` records the text for every wave that runs next; `retry` runs that wave again with
+the updated context and whatever is already on the branch. If the **plan** was wrong, edit
+`.ai/context/plan.md` before retrying, or re-run planning:
+
+```bash
+kcia work answer "The fix must go in the repository layer, not the widget."
+kcia work retry analysis
+kcia work approve
+```
+
+Under git flow, all of this stays on the **same feature branch** until the cycle closes.
+Starting another `kcia work "<new prompt>"` during an open cycle does not open a new branch —
+it continues on the recorded one and starts a fresh task session for the new prompt.
+
+When you are satisfied:
+
+```bash
+git diff
+kcia done
+```
+
+`kcia done` writes the commits, appends session history, **closes the work cycle**, and
+clears the active session so the next `kcia work` can open a new branch. To drop the task
+without committing, use `kcia work abort` (also closes the cycle; your uncommitted files
+stay on disk).
+
 The gate is declarative, not hardcoded. It comes from `requires_approval` in
 `control-plane/waves/waves.yaml`, so moving it — or adding a second one — is a data edit:
 
@@ -519,10 +559,16 @@ was never configured does `branch start` fall back to reading the branches itsel
 The answer is written to the same config, so it is asked once. Off a TTY (CI) it does not
 guess: it exits and tells you to pass `--base`.
 
-The automatic branch is opened **once per task**, right before the first wave runs, and it
-never moves you against your will: if the name is taken, if the base branch is gone, or if
-you have wandered onto another branch, it says so and leaves the run on the branch you are
-on. Failing to branch is never a reason to refuse to do the work.
+The automatic branch is opened **once per work cycle** (recorded in
+`.ai/local/cycle.json`), right before the first wave runs, and it never moves you
+against your will: if the name is taken, if the base branch is gone, or if
+you have wandered onto another branch, it says so and leaves the run on the
+branch you are on. Failing to branch is never a reason to refuse to do the work.
+
+While a cycle is open, every `kcia work` stays on that branch — retries,
+answers, and even a new `kcia work "<prompt>"` — until you close the cycle with
+`kcia done` or `kcia work abort`. The next task after a successful `kcia done`
+can open a new branch.
 
 #### What kcia needs to reach *your* git, per project
 

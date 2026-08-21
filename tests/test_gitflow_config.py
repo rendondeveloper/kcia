@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from kcia.git.autobranch import ensure_task_branch
+from kcia.git.cycle import is_cycle_open
 from kcia.git.flow import (
     CURRENT_BRANCH,
     GITFLOW,
@@ -100,6 +101,7 @@ def test_gitflow_opens_the_branch_without_asking(repo: Path) -> None:
     assert outcome is not None and outcome.created
     assert current_branch(repo) == "fix/IP-116-corrige-el-overflow"
     assert Session.load(repo).task["branch"] == "fix/IP-116-corrige-el-overflow"
+    assert is_cycle_open(repo)
 
 
 def test_the_branch_is_opened_once_per_task(repo: Path) -> None:

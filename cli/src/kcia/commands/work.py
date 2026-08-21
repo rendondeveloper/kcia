@@ -14,6 +14,7 @@ from typer.core import TyperGroup
 from kcia.cancel import interruptible
 from kcia.config import resolve_agents
 from kcia.git.autobranch import ensure_task_branch
+from kcia.git.cycle import is_cycle_open
 from kcia.integrations.tickets import (
     FetchResult,
     atlassian_available,
@@ -134,6 +135,16 @@ def _create_task(
     scope_paths = scope or []
     if scope_paths:
         _validate_scope(repo, scope_paths)
+
+    if is_cycle_open(repo):
+        from kcia.git.cycle import load_cycle
+
+        cycle = load_cycle(repo)
+        if cycle is not None:
+            typer.echo(
+                f"Open work cycle on `{cycle.branch}` — this task continues on the same "
+                "branch until `kcia done`."
+            )
 
     manifest_raw = load_manifest_raw(repo)
     mode = classify_input(

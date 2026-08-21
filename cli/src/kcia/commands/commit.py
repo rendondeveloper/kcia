@@ -15,6 +15,7 @@ from kcia.git.commit import (
     PlannedCommit,
     plan_commits,
 )
+from kcia.git.cycle import close_cycle
 from kcia.git.repo import (
     GH_BIN,
     GitError,
@@ -28,7 +29,7 @@ from kcia.git.repo import (
 )
 from kcia.history import index, log
 from kcia.waves.definitions import load_waves
-from kcia.waves.session import Session
+from kcia.waves.session import Session, session_path
 
 MAX_LISTED_PATHS = 12
 _NON_ENGLISH_CHARS = frozenset("ñÑ¿¡")
@@ -225,6 +226,10 @@ def commit_command(
             commit_sha=written[-1][0],
             task_id=task_id,
         )
+        close_cycle(repo)
+        session_file = session_path(repo)
+        if session_file.is_file():
+            session_file.unlink()
 
     if not (push or pr):
         return
