@@ -146,14 +146,27 @@ def test_an_existing_branch_name_is_not_adopted(repo: Path) -> None:
     assert current_branch(repo) == "main"
 
 
-def test_standing_on_the_wrong_branch_warns_instead_of_moving_you(repo: Path) -> None:
+def test_standing_on_the_wrong_branch_checks_out_the_open_cycle(repo: Path) -> None:
     gitflow(repo)
     session = Session.create(repo, text="add a loader", mode="prompt", title="add a loader")
     ensure_task_branch(session)
+    branch = current_branch(repo)
     git(repo, "checkout", "main")
     outcome = ensure_task_branch(Session.load(repo))
     assert outcome is not None and not outcome.created
+    assert "checked out from" in outcome.message
+    assert current_branch(repo) == branch
+
+
+def test_recorded_branch_without_cycle_warns_instead_of_moving_you(repo: Path) -> None:
+    gitflow(repo)
+    session = Session.create(repo, text="add a loader", mode="prompt", title="add a loader")
+    session.data["task"]["branch"] = "feature/add-a-loader"
+    session.save()
+    outcome = ensure_task_branch(session)
+    assert outcome is not None and not outcome.created
     assert "Nothing was changed" in outcome.message
+    assert current_branch(repo) == "main"
 
 
 def _init(repo: Path, monkeypatch, *args: str, stdin: str = "") -> str:
