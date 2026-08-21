@@ -174,3 +174,38 @@ def commit(repo_root: Path, message: str) -> str:
 
 def push(repo_root: Path, branch: str, *, remote: str = "origin") -> None:
     run_git(repo_root, "push", "--set-upstream", remote, branch)
+
+
+def fetch(repo_root: Path, remote: str = "origin") -> None:
+    run_git(repo_root, "fetch", remote)
+
+
+def pull(repo_root: Path, branch: str, *, remote: str = "origin") -> None:
+    run_git(repo_root, "pull", remote, branch)
+
+
+def merge_no_ff(repo_root: Path, branch: str) -> None:
+    run_git(
+        repo_root,
+        "merge",
+        "--no-ff",
+        "-m",
+        f"Merge branch '{branch}'",
+        branch,
+    )
+
+
+def delete_local_branch(repo_root: Path, name: str) -> None:
+    run_git(repo_root, "branch", "-d", name)
+
+
+def delete_remote_branch(repo_root: Path, name: str, *, remote: str = "origin") -> None:
+    run_git(repo_root, "push", remote, "--delete", name)
+
+
+def remote_branch_exists(repo_root: Path, name: str, *, remote: str = "origin") -> bool:
+    try:
+        run_git(repo_root, "show-ref", "--verify", "--quiet", f"refs/remotes/{remote}/{name}")
+    except GitError:
+        return False
+    return True

@@ -44,6 +44,9 @@ def repo(tmp_path: Path) -> Path:
     (root / "README.md").write_text("hi\n", encoding="utf-8")
     git(root, "add", ".")
     git(root, "commit", "-m", "initial")
+    from git_helpers import add_origin
+
+    add_origin(root)
     return root
 
 

@@ -16,17 +16,26 @@ from kcia.git.commit import (
     plan_commits,
 )
 from kcia.git.cycle import close_cycle
+from kcia.git.flow import ON_DONE_MERGE, load_flow
 from kcia.git.repo import (
     GH_BIN,
     GitError,
+    checkout,
     commit as git_commit,
     current_branch,
+    delete_local_branch,
+    delete_remote_branch,
+    fetch,
     gh_available,
-    remotes,
+    merge_no_ff,
+    pull,
     push as git_push,
+    remote_branch_exists,
+    remotes,
     stage,
     unstage_all,
 )
+from kcia.waves.progress import StepProgress
 from kcia.history import index, log
 from kcia.waves.definitions import load_waves
 from kcia.waves.session import Session, session_path
@@ -117,17 +126,115 @@ def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> None:
     if not gh_available():
         typer.echo(
             "`gh` is not installed, so no pull request was opened. "
-            "Install it (https://cli.github.com) or open the PR yourself."
+            "Install it (https://cli.github.com) and re-run, or open the PR yourself."
         )
-        return
+        raise typer.Exit(code=1)
     args = [GH_BIN, "pr", "create", "--title", title, "--body", "", "--head", branch]
     if base:
         args += ["--base", base]
     result = subprocess.run(args, cwd=repo, capture_output=True, text=True)
     if result.returncode != 0:
         typer.echo(f"gh pr create failed: {(result.stderr or result.stdout).strip()}")
+        raise typer.Exit(code=1)
+    url = result.stdout.strip()
+    if url:
+        typer.echo(url)
+
+
+def _run_step(label: str, action) -> None:
+    typer.echo(label)
+    with StepProgress(label):
+        action()
+
+
+def _remote_name(repo: Path) -> str:
+    names = remotes(repo)
+    if not names:
+        typer.echo(
+            "No git remote configured. Add one with `git remote add origin <url>`."
+        )
+        raise typer.Exit(code=1)
+    return "origin" if "origin" in names else names[0]
+
+
+def _push_branch(repo: Path, branch: str, *, remote: str) -> None:
+    _run_step(
+        f"Pushing `{branch}`",
+        lambda: git_push(repo, branch, remote=remote),
+    )
+    typer.echo(f"Pushed `{branch}`.")
+
+
+def _finish_current_branch(repo: Path, branch: str) -> None:
+    remote = _remote_name(repo)
+    _push_branch(repo, branch, remote=remote)
+
+
+def _finish_gitflow_pr(repo: Path, branch: str, title: str, base: str) -> None:
+    if not gh_available():
+        typer.echo(
+            "`gh` is not installed, so the pull request could not be opened. "
+            "Install it (https://cli.github.com) and re-run."
+        )
+        raise typer.Exit(code=1)
+    remote = _remote_name(repo)
+    _push_branch(repo, branch, remote=remote)
+    typer.echo(f"Opening PR to `{base}`")
+    with StepProgress(f"Opening PR to `{base}`"):
+        _open_pr(repo, branch, title, base)
+    typer.echo(f"Opened PR to `{base}`.")
+
+
+def _finish_gitflow_merge(repo: Path, branch: str, base: str) -> None:
+    if branch == base:
+        typer.echo(
+            f"Already on `{base}`; nothing to merge. Push this branch or switch "
+            "to the task branch first."
+        )
+        raise typer.Exit(code=1)
+    remote = _remote_name(repo)
+    _run_step(f"Fetching `{remote}`", lambda: fetch(repo, remote))
+    _run_step(f"Checking out `{base}`", lambda: checkout(repo, base))
+    _run_step(f"Pulling `{remote}/{base}`", lambda: pull(repo, base, remote=remote))
+    _run_step(
+        f"Merging `{branch}` into `{base}`",
+        lambda: merge_no_ff(repo, branch),
+    )
+    _run_step(
+        f"Pushing `{base}`",
+        lambda: git_push(repo, base, remote=remote),
+    )
+    _run_step(
+        f"Deleting `{branch}` locally",
+        lambda: delete_local_branch(repo, branch),
+    )
+    if remote_branch_exists(repo, branch, remote=remote):
+        _run_step(
+            f"Deleting `{branch}` on `{remote}`",
+            lambda: delete_remote_branch(repo, branch, remote=remote),
+        )
+    typer.echo(f"Merged `{branch}` into `{base}`.")
+
+
+def _after_commit(
+    repo: Path,
+    *,
+    branch: str,
+    title: str,
+    session_base: str | None,
+) -> None:
+    flow = load_flow(repo)
+    if flow.uses_gitflow:
+        base = session_base or flow.base_branch
+        if not base:
+            typer.echo("Git flow is on, but no base branch is configured.")
+            raise typer.Exit(code=1)
+        if flow.on_done == ON_DONE_MERGE:
+            _finish_gitflow_merge(repo, branch, base)
+            return
+        _finish_gitflow_pr(repo, branch, title, base)
         return
-    typer.echo(result.stdout.strip())
+    _finish_current_branch(repo, branch)
 
 
 def commit_command(
@@ -148,8 +255,6 @@ def commit_command(
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show the commits and stop."),
-    push: bool = typer.Option(False, "--push", help="Push the branch after committing."),
-    pr: bool = typer.Option(False, "--pr", help="Open a pull request with `gh` after pushing."),
 ) -> None:
     """Review and write the commits that close the task.
 
@@ -230,20 +335,14 @@ def commit_command(
         session_file = session_path(repo)
         if session_file.is_file():
             session_file.unlink()
-
-    if not (push or pr):
-        return
-
-    if not remotes(repo):
-        typer.echo("No git remote configured, so nothing was pushed. Add one with `git remote add origin <url>`.")
-        return
-    try:
-        git_push(repo, branch)
-    except GitError as exc:
-        typer.echo(str(exc))
-        raise typer.Exit(code=1) from exc
-    typer.echo(f"Pushed {branch}.")
-
-    if pr:
-        base = session.task.get("base_branch") if session else None
-        _open_pr(repo, branch, written[-1][1], base)
+        session_base = session.task.get("base_branch") if session is not None else None
+        try:
+            _after_commit(
+                repo,
+                branch=branch,
+                title=written[-1][1],
+                session_base=session_base,
+            )
+        except GitError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=1) from exc

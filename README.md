@@ -68,7 +68,7 @@ steps 5–9 once per piece of work.
 
 - Python 3.11+
 - `git` — required. kcia branches and commits through the `git` binary in your repository.
-- `gh` — **optional**, only for `kcia done --pr` (install: <https://cli.github.com>).
+- `gh` — **optional**, only when git flow is configured to open a PR on `kcia done` (install: <https://cli.github.com>).
 - A provider CLI, **installed and logged in**, for each role you use.
 
 kcia never calls an LLM API. It shells out to the CLI you already have, so that CLI — and
@@ -209,6 +209,7 @@ moved).
 | `--refresh-context` | regenerate `.ai/context/project.md`, discarding your edits |
 | `--gitflow` / `--no-gitflow` | decide the branching model outright instead of being asked |
 | `--main-branch` / `--develop-branch` | name the base branches outright |
+| `--on-done pr` / `--on-done merge` | git flow: after `kcia done`, open a PR to the base branch, or merge into it |
 
 #### The branching model is decided here, once
 
@@ -224,6 +225,12 @@ Git flow
   Which one? [1]:
   Main branch [main]:
   Development branch [develop]:
+
+  When `kcia done` finishes:
+  1. Open a pull request to `develop`
+  2. Merge directly into `develop`
+
+  Which one? [1]:
 ```
 
 kcia reads the real branches first — local **and** remote — so `main`/`master` and
@@ -237,8 +244,12 @@ and says so in one line:
 Git flow: created `feature/IP-116-corrige-el-overflow` from `develop`.
 ```
 
+If you pick git flow, a follow-up question decides what `kcia done` does afterwards: open
+a pull request to the base branch (`pr`, the default) or merge into it (`merge`). Re-run
+`kcia init --on-done merge` (or `pr`) to change that later without re-answering the rest.
+
 With option 2 it says nothing and works on the branch you are standing on. To change your
-mind, edit the config — that is the only place the decision lives:
+mind, re-run `kcia init` with the flags, or edit the config:
 
 ```bash
 kcia branch config          # show it, and the path to the file
@@ -251,6 +262,7 @@ flow: gitflow               # or current-branch
 main_branch: main
 develop_branch: develop
 base_branch: develop        # new branches start here
+on_done: pr                 # git flow: `pr` or `merge` after `kcia done`
 ```
 
 Non-interactive (`kcia init --yes`, CI) never blocks: git flow goes on when the repository
@@ -397,9 +409,11 @@ kcia done
 ```
 
 `kcia done` writes the commits, appends session history, **closes the work cycle**, and
-clears the active session so the next `kcia work` can open a new branch. To drop the task
-without committing, use `kcia work abort` (also closes the cycle; your uncommitted files
-stay on disk).
+clears the active session so the next `kcia work` can open a new branch. It then runs the
+post-commit workflow configured at init: push the current branch, or — under git flow —
+open a PR to the base branch / merge into it. Each of those steps is printed as it runs.
+To drop the task without committing, use `kcia work abort` (also closes the cycle; your
+uncommitted files stay on disk).
 
 The gate is declarative, not hardcoded. It comes from `requires_approval` in
 `control-plane/waves/waves.yaml`, so moving it — or adding a second one — is a data edit:
@@ -486,7 +500,6 @@ kcia done
 | `kcia done "subject" --type fix` | set the subject and type by hand |
 | `kcia done --single` | one commit instead of two |
 | `kcia done --ticket IP-9` / `--no-ticket` | override or drop the issue key |
-| `kcia done --push --pr` | push, then open the PR with `gh` |
 
 It prints exactly what it is about to write — messages **and** the files in each commit —
 and writes nothing until you answer `y`:
@@ -580,8 +593,8 @@ kcia and `git push` from your shell do the same thing. Concretely, per project y
 | For | Requirement |
 |---|---|
 | automatic branching, `kcia branch start`, `kcia done` | a git worktree (`git init` / a clone) and `user.name` + `user.email` set |
-| `kcia done --push` | a remote (`git remote add origin <url>`) your git can already authenticate to |
-| `kcia done --pr` | the above, plus `gh` installed and `gh auth login` done once |
+| `kcia done` (push / merge / PR) | a remote (`git remote add origin <url>`) your git can already authenticate to |
+| git-flow `on_done: pr` | the above, plus `gh` installed and `gh auth login` done once |
 
 kcia stores no token and reads no credential. `kcia doctor` reports the branch, the detected
 base branch and whether a remote exists.

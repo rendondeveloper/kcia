@@ -72,15 +72,33 @@ def test_open_cycle_reuses_branch_for_new_task(repo: Path) -> None:
     assert current_branch(repo) == branch
 
 
-def test_done_closes_cycle_and_session(repo: Path) -> None:
+def test_done_closes_cycle_and_session(repo: Path, monkeypatch) -> None:
+    import subprocess
+
+    from git_helpers import add_origin
     from typer.testing import CliRunner
 
     from kcia.main import app
 
+    add_origin(repo)
+    git(repo, "push", "-u", "origin", "develop")
     gitflow(repo)
     session = Session.create(repo, text="add loader", mode="prompt", title="add loader")
     ensure_task_branch(session)
     (repo / "src.txt").write_text("x\n", encoding="utf-8")
+
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr("kcia.commands.commit.gh_available", lambda: True)
+    real_run = subprocess.run
+
+    def fake_run(args, **kwargs):
+        if args and args[0] == "gh":
+            return subprocess.CompletedProcess(
+                args, 0, stdout="https://example.com/pull/1\n", stderr=""
+            )
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr("kcia.commands.commit.subprocess.run", fake_run)
 
     runner = CliRunner()
     result = runner.invoke(app, ["done", "--yes"], catch_exceptions=False)

@@ -15,6 +15,8 @@ from kcia.git.flow import (
     CURRENT_BRANCH,
     GITFLOW,
     GitFlow,
+    ON_DONE_MERGE,
+    ON_DONE_PR,
     detect_branches,
     load_flow,
     save_flow,
@@ -84,6 +86,11 @@ def init(
     develop_branch: str | None = typer.Option(
         None, "--develop-branch", help="Name of the development branch (skips the question)."
     ),
+    on_done: str | None = typer.Option(
+        None,
+        "--on-done",
+        help="Git flow: after `kcia done`, open a PR (`pr`) or merge into the base branch (`merge`).",
+    ),
 ) -> None:
     """Initialize `.ai/` and generated adapters in the current repository."""
     repo_root = (path or find_repo_root() or Path.cwd()).resolve()
@@ -133,6 +140,7 @@ def init(
         gitflow=gitflow,
         main_branch=main_branch,
         develop_branch=develop_branch,
+        on_done=on_done,
     )
     _report_agents(repo_root)
 
@@ -144,6 +152,7 @@ def _configure_git_flow(
     gitflow: bool | None,
     main_branch: str | None,
     develop_branch: str | None,
+    on_done: str | None = None,
 ) -> None:
     """Decide the branching model once, here, so no run ever has to ask.
 
@@ -167,9 +176,34 @@ def _configure_git_flow(
         return
 
     existing = load_flow(repo_root)
-    flags_given = gitflow is not None or main_branch or develop_branch
+    requested_on_done = _parse_on_done_flag(on_done)
+    flags_given = gitflow is not None or main_branch or develop_branch or requested_on_done is not None
     if existing.configured and not flags_given:
         typer.echo(f"  Already configured: {existing.describe()}.")
+        typer.echo(f"  Change it in {GIT_CONFIG_FILE}.")
+        return
+
+    if (
+        existing.configured
+        and existing.uses_gitflow
+        and requested_on_done is not None
+        and gitflow is None
+        and not main_branch
+        and not develop_branch
+    ):
+        save_flow(
+            repo_root,
+            GitFlow(
+                flow=existing.flow,
+                main_branch=existing.main_branch,
+                develop_branch=existing.develop_branch,
+                base_branch=existing.base_branch,
+                on_done=requested_on_done,
+                configured=True,
+            ),
+        )
+        typer.echo(f"  Git flow: {existing.describe().split(';')[0]}.")
+        typer.echo(f"  {_on_done_summary(existing.base_branch or 'base', requested_on_done)}")
         typer.echo(f"  Change it in {GIT_CONFIG_FILE}.")
         return
 
@@ -191,6 +225,9 @@ def _configure_git_flow(
         use_flow = gitflow if gitflow is not None else bool(resolved_develop)
 
     if not use_flow:
+        if requested_on_done is not None:
+            typer.echo("  `--on-done` only applies when git flow is on.")
+            raise typer.Exit(code=1)
         save_flow(
             repo_root,
             GitFlow(
@@ -210,6 +247,12 @@ def _configure_git_flow(
         save_flow(repo_root, GitFlow(flow=CURRENT_BRANCH, configured=True))
         return
 
+    resolved_on_done = requested_on_done
+    if resolved_on_done is None and interactive:
+        resolved_on_done = _ask_on_done(base)
+    if resolved_on_done is None:
+        resolved_on_done = ON_DONE_PR
+
     save_flow(
         repo_root,
         GitFlow(
@@ -217,13 +260,41 @@ def _configure_git_flow(
             main_branch=resolved_main,
             develop_branch=resolved_develop,
             base_branch=base,
+            on_done=resolved_on_done,
             configured=True,
         ),
     )
     typer.echo(f"  Git flow: every task branches off `{base}`, automatically.")
+    typer.echo(f"  {_on_done_summary(base, resolved_on_done)}")
     if resolved_main:
         typer.echo(f"  Main branch: `{resolved_main}`.")
     typer.echo(f"  Change it in {GIT_CONFIG_FILE}.")
+
+
+def _parse_on_done_flag(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if normalized not in (ON_DONE_PR, ON_DONE_MERGE):
+        typer.echo("`--on-done` must be `pr` or `merge`.")
+        raise typer.Exit(code=1)
+    return normalized
+
+
+def _ask_on_done(base: str) -> str:
+    typer.echo("")
+    typer.echo(f"  When `kcia done` finishes:")
+    typer.echo(f"  1. Open a pull request to `{base}`")
+    typer.echo(f"  2. Merge directly into `{base}`")
+    typer.echo("")
+    answer = typer.prompt("  Which one?", default="1").strip()
+    return ON_DONE_MERGE if answer.startswith("2") else ON_DONE_PR
+
+
+def _on_done_summary(base: str, on_done: str) -> str:
+    if on_done == ON_DONE_MERGE:
+        return f"`kcia done` will merge into `{base}`."
+    return f"`kcia done` will open a PR to `{base}`."
 
 
 def _ask_git_flow(

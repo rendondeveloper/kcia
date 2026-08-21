@@ -202,3 +202,70 @@ def _describe_tool(event: ToolCallStart) -> str:
 def _short_path(path: str) -> str:
     parts = path.replace("\\", "/").split("/")
     return "/".join(parts[-2:]) if len(parts) > 2 else path
+
+
+class StepProgress:
+    """Spinner for a named CLI step (git operations in `kcia done`, not waves).
+
+    On a TTY it reuses the same in-place spinner as `WaveProgress`. Off a TTY it
+    stays silent — the caller prints the step label itself so logs stay linear.
+    """
+
+    def __init__(
+        self,
+        label: str,
+        *,
+        stream: TextIO | None = None,
+        enabled: bool | None = None,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self._label = label
+        self._stream = stream if stream is not None else sys.stderr
+        self._tty = enabled if enabled is not None else self._stream.isatty()
+        self._lock = threading.Lock()
+        self._spinner = itertools.cycle(_SPINNER_FRAMES)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._width = 0
+        self._started_at: float | None = None
+        self._clock = clock or time.monotonic
+
+    def __enter__(self) -> StepProgress:
+        self.start()
+        return self
+
+    def __exit__(self, exc_type: object, *exc: object) -> None:
+        self.finish(failed=exc[0] is not None)
+
+    def start(self) -> None:
+        self._started_at = self._clock()
+        if not self._tty:
+            return
+        self._thread = threading.Thread(target=self._animate, daemon=True)
+        self._thread.start()
+
+    def finish(self, *, failed: bool = False) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None
+        self._clear()
+
+    def _animate(self) -> None:
+        while not self._stop.is_set():
+            self._render(f"{next(self._spinner)} {self._label}")
+            self._stop.wait(_TICK)
+
+    def _render(self, text: str) -> None:
+        columns = shutil.get_terminal_size((80, 24)).columns
+        line = text[: columns - 1]
+        padding = " " * max(0, self._width - len(line))
+        self._stream.write(f"\r{line}{padding}")
+        self._stream.flush()
+        self._width = len(line)
+
+    def _clear(self) -> None:
+        if self._tty and self._width:
+            self._stream.write("\r" + " " * self._width + "\r")
+            self._stream.flush()
+            self._width = 0

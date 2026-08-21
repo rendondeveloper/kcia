@@ -117,6 +117,8 @@ def branch_config() -> None:
         typer.echo(f"  develop: {flow.develop_branch}")
     if flow.base_branch:
         typer.echo(f"  base:    {flow.base_branch}")
+    if flow.uses_gitflow:
+        typer.echo(f"  on done: {flow.on_done}")
     typer.echo("")
     typer.echo(f"Edit {git_config_path(repo)} to change it.")
 

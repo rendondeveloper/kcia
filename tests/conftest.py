@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CLI_SRC = ROOT / "cli" / "src"
 sys.path.insert(0, str(CLI_SRC))
+sys.path.insert(0, str(ROOT / "tests"))
 
 KCIA = ROOT / ".venv" / "bin" / "kcia"
 MELOS_FIXTURE = ROOT / "tests" / "fixtures" / "repos" / "melos_mono"

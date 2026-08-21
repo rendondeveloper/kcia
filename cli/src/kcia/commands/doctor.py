@@ -63,7 +63,7 @@ def _report_git_flow(report: "_Report", repo: Path) -> None:
         report.line(
             OK if names else WARN,
             f"remote {', '.join(names) if names else 'none'}",
-            None if names else "`kcia done --push` needs one: `git remote add origin <url>`.",
+            None if names else "`kcia done` needs one to push: `git remote add origin <url>`.",
         )
     except GitError as exc:
         report.line(WARN, f"git state unreadable: {exc}")
@@ -99,7 +99,7 @@ def doctor() -> None:
     report.line(
         OK if gh else WARN,
         f"gh {gh or 'not found'}",
-        None if gh else "Optional: only `kcia done --pr` needs it (https://cli.github.com).",
+        None if gh else "Optional: git-flow `on_done: pr` needs it (https://cli.github.com).",
     )
 
     try:

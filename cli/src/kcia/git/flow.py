@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
@@ -32,6 +33,10 @@ BRANCH_PREFIXES = {"feat": "feature", "fix": "fix", "docs": "docs"}
 
 GITFLOW = "gitflow"
 CURRENT_BRANCH = "current-branch"
+
+ON_DONE_PR = "pr"
+ON_DONE_MERGE = "merge"
+OnDone = Literal["pr", "merge"]
 
 MAX_SLUG_WORDS = 6
 MAX_SLUG_LENGTH = 48
@@ -51,6 +56,7 @@ class GitFlow:
     main_branch: str | None = None
     develop_branch: str | None = None
     base_branch: str | None = None
+    on_done: str = ON_DONE_PR
     configured: bool = False
 
     @property
@@ -59,7 +65,12 @@ class GitFlow:
 
     def describe(self) -> str:
         if self.uses_gitflow:
-            return f"git flow — every task branches off `{self.base_branch}`"
+            action = (
+                f"kcia done opens a PR to `{self.base_branch}`"
+                if self.on_done == ON_DONE_PR
+                else f"kcia done merges into `{self.base_branch}`"
+            )
+            return f"git flow — every task branches off `{self.base_branch}`; {action}"
         return "no git flow — every task is done on the current branch"
 
 
@@ -77,6 +88,7 @@ def load_flow(repo_root: Path) -> GitFlow:
             main_branch=data.get("main_branch"),
             develop_branch=data.get("develop_branch"),
             base_branch=base,
+            on_done=normalize_on_done(data.get("on_done")),
             configured=bool(base),
         )
     return GitFlow(
@@ -84,6 +96,7 @@ def load_flow(repo_root: Path) -> GitFlow:
         main_branch=data.get("main_branch"),
         develop_branch=data.get("develop_branch"),
         base_branch=data.get("base_branch"),
+        on_done=normalize_on_done(data.get("on_done")),
         configured=True,
     )
 
@@ -97,9 +110,17 @@ def save_flow(repo_root: Path, flow: GitFlow) -> Path:
         "main_branch": flow.main_branch,
         "develop_branch": flow.develop_branch,
         "base_branch": flow.base_branch,
+        "on_done": flow.on_done,
     }
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path
+
+
+def normalize_on_done(value: object) -> str:
+    """Accept `pr` / `merge`; anything else (including a missing field) is `pr`."""
+    if value in (ON_DONE_PR, ON_DONE_MERGE):
+        return str(value)
+    return ON_DONE_PR
 
 
 @dataclass(frozen=True)
@@ -194,6 +215,7 @@ def save_base_branch(repo_root: Path, base: str) -> None:
             main_branch=current.main_branch,
             develop_branch=current.develop_branch or base,
             base_branch=base,
+            on_done=current.on_done,
             configured=True,
         ),
     )

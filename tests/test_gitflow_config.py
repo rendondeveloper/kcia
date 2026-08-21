@@ -83,13 +83,16 @@ def test_config_round_trips(repo: Path) -> None:
     flow = load_flow(repo)
     assert (flow.flow, flow.base_branch, flow.main_branch) == (GITFLOW, "develop", "main")
     assert flow.uses_gitflow is True
+    assert flow.on_done == "pr"
 
 
 def test_an_older_config_with_only_a_base_still_reads_as_gitflow(repo: Path) -> None:
     path = repo / ".ai" / "local" / "git.yaml"
     path.parent.mkdir(parents=True)
     path.write_text("schema_version: 1\nbase_branch: develop\n", encoding="utf-8")
-    assert load_flow(repo).uses_gitflow is True
+    flow = load_flow(repo)
+    assert flow.uses_gitflow is True
+    assert flow.on_done == "pr"
 
 
 def test_gitflow_opens_the_branch_without_asking(repo: Path) -> None:
@@ -176,10 +179,11 @@ def project(repo: Path) -> Path:
 
 
 def test_init_asks_once_and_records_the_answer(project: Path, monkeypatch) -> None:
-    output = _init(project, monkeypatch, stdin="1\nmain\ndevelop\n")
+    output = _init(project, monkeypatch, stdin="1\nmain\ndevelop\n1\n")
     assert "1. Git flow" in output
     flow = load_flow(project)
     assert (flow.flow, flow.base_branch, flow.main_branch) == (GITFLOW, "develop", "main")
+    assert flow.on_done == "pr"
 
 
 def test_init_can_be_told_to_stay_on_the_current_branch(project: Path, monkeypatch) -> None:
@@ -199,6 +203,52 @@ def test_flags_skip_the_dialog(project: Path, monkeypatch) -> None:
     assert load_flow(project).base_branch == "develop"
     _init(project, monkeypatch, "--no-gitflow")
     assert load_flow(project).uses_gitflow is False
+
+
+def test_init_asks_on_done_after_gitflow(project: Path, monkeypatch) -> None:
+    output = _init(project, monkeypatch, stdin="1\nmain\ndevelop\n2\n")
+    assert "When `kcia done` finishes" in output
+    assert load_flow(project).on_done == "merge"
+
+
+def test_init_on_done_flag_skips_the_question(project: Path, monkeypatch) -> None:
+    _init(
+        project,
+        monkeypatch,
+        "--gitflow",
+        "--main-branch",
+        "main",
+        "--develop-branch",
+        "develop",
+        "--on-done",
+        "merge",
+    )
+    assert load_flow(project).on_done == "merge"
+
+
+def test_init_on_done_flag_updates_an_existing_gitflow_repo(
+    project: Path, monkeypatch
+) -> None:
+    _init(project, monkeypatch, "--yes")
+    assert load_flow(project).on_done == "pr"
+    output = _init(project, monkeypatch, "--on-done", "merge")
+    assert load_flow(project).on_done == "merge"
+    assert load_flow(project).uses_gitflow is True
+    assert "merge into" in output
+
+
+def test_init_on_done_flag_is_rejected_without_gitflow(
+    project: Path, monkeypatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from kcia.main import app
+
+    monkeypatch.chdir(project)
+    monkeypatch.setattr("kcia.commands.init.interactive", lambda: False)
+    result = CliRunner().invoke(app, ["init", "--no-gitflow", "--on-done", "merge"])
+    assert result.exit_code == 1
+    assert "only applies when git flow is on" in result.output
 
 
 def test_non_interactive_turns_it_on_only_when_a_develop_branch_exists(
