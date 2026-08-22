@@ -55,3 +55,8 @@ validation:
   required_commands: [test, lint]
   optional_commands: [build]
   retry_limit: 3
+  no_tests_signature:
+    command: test
+    exit_code: 65
+    output_contains:
+      - "No test files were passed"

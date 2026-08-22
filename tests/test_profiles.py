@@ -237,6 +237,16 @@ def test_resolve_inheritance_propagates_reference_tags() -> None:
     ]
 
 
+def test_backend_dart_inherits_empty_suite_signature() -> None:
+    registry = _load_builtin_registry()
+    resolved = resolve_inheritance("backend-dart", registry)
+    signature = resolved.validation.get("no_tests_signature")
+    assert signature is not None
+    assert signature["command"] == "test"
+    assert signature["exit_code"] == 65
+    assert "No test files were passed" in signature["output_contains"]
+
+
 def test_nodepack_string_reference_derives_stem_tag() -> None:
     previous = os.environ.get("KCIA_PROFILE_PATH")
     os.environ["KCIA_PROFILE_PATH"] = str(NODEPACK)

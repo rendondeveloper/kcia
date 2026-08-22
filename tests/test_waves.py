@@ -17,9 +17,16 @@ from kcia.main import app
 from kcia.providers.base import RunResult
 from kcia.waves.definitions import load_waves
 from kcia.waves.prompts import build_prompt
-from kcia.waves.runner import check_requires, run_wave
+from kcia.waves.runner import _format_validation_failures, check_requires, run_wave
 from kcia.waves.session import Session, classify_input, session_path
-from kcia.waves.validation import ValidationStep, build_validation_plan, run_validation
+from kcia.waves.validation import (
+    ValidationFailure,
+    ValidationReport,
+    ValidationStep,
+    build_validation_plan,
+    matches_empty_suite,
+    run_validation,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 KCIA = ROOT / ".venv" / "bin" / "kcia"
@@ -189,3 +196,56 @@ def test_stale_lock_cleared_for_dead_pid(git_repo: Path) -> None:
     session.data["lock"] = {"pid": 999999999, "acquired_at": "now"}
     session.save()
     assert not session.is_locked()
+
+
+_EMPTY_SUITE = {
+    "command": "test",
+    "exit_code": 65,
+    "output_contains": ["No test files were passed"],
+}
+
+
+def test_empty_suite_signature_matches_dart_test_output() -> None:
+    step = ValidationStep(
+        "backend-dart",
+        Path("/tmp/pkg"),
+        "test",
+        "dart test",
+        empty_suite_signature=_EMPTY_SUITE,
+    )
+    missing = ValidationFailure(
+        step=step,
+        exit_code=65,
+        output='No test files were passed and the default "test/" directory doesn\'t exist.',
+    )
+    real_failure = ValidationFailure(
+        step=step,
+        exit_code=1,
+        output="Expected: true\n  Actual: false",
+    )
+    assert matches_empty_suite(missing)
+    assert not matches_empty_suite(real_failure)
+
+
+def test_format_validation_failures_rewrites_empty_suite_as_scaffold_instruction() -> None:
+    step = ValidationStep(
+        "backend-dart",
+        Path("/tmp/pkg"),
+        "test",
+        "dart test",
+        empty_suite_signature=_EMPTY_SUITE,
+    )
+    report = ValidationReport(
+        success=False,
+        failures=[
+            ValidationFailure(
+                step=step,
+                exit_code=65,
+                output='No test files were passed and the default "test/" directory doesn\'t exist.',
+            )
+        ],
+    )
+    text = _format_validation_failures(report)
+    assert "No test suite exists yet for profile backend-dart" in text
+    assert "create one covering the recent changes" in text
+    assert "No test files were passed" not in text

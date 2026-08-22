@@ -38,10 +38,17 @@ class AdapterConfig(BaseModel):
     claude: ClaudeAdapterConfig | None = None
 
 
+class EmptyTestSignature(BaseModel):
+    command: str
+    exit_code: int
+    output_contains: list[str] = Field(min_length=1)
+
+
 class ValidationConfig(BaseModel):
     required_commands: list[str] = Field(default_factory=list)
     optional_commands: list[str] = Field(default_factory=list)
     retry_limit: int = 3
+    no_tests_signature: EmptyTestSignature | None = None
 
 
 class ReferenceSpec(BaseModel):

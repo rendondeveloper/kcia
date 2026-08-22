@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pathspec
 
@@ -24,6 +25,7 @@ class ValidationStep:
     cwd: Path
     command_name: str
     command: str
+    empty_suite_signature: dict[str, Any] | None = None
 
 
 @dataclass
@@ -80,6 +82,7 @@ def build_validation_plan(
         commands = resolve_commands(resolved, manifest_entry, loaded.root, cwd)
 
         required = resolved.validation.get("required_commands", [])
+        signature = resolved.validation.get("no_tests_signature")
         for command_name in required:
             command = commands.get(command_name)
             if not command:
@@ -94,6 +97,12 @@ def build_validation_plan(
                     cwd=cwd,
                     command_name=command_name,
                     command=command,
+                    empty_suite_signature=(
+                        signature
+                        if isinstance(signature, dict)
+                        and signature.get("command") == command_name
+                        else None
+                    ),
                 )
             )
 
@@ -153,6 +162,26 @@ def run_validation(
             break
 
     return report
+
+
+def matches_empty_suite(failure: ValidationFailure) -> bool:
+    """Whether this failure is the profile's declared empty test-suite signal."""
+    signature = failure.step.empty_suite_signature
+    if not signature:
+        return False
+    if failure.exit_code != signature.get("exit_code"):
+        return False
+    output = failure.output or ""
+    needles = signature.get("output_contains") or []
+    return bool(needles) and all(needle in output for needle in needles)
+
+
+def empty_suite_retry_message(failure: ValidationFailure) -> str:
+    step = failure.step
+    return (
+        f"No test suite exists yet for profile {step.profile_id} at {step.cwd} "
+        "— create one covering the recent changes, then validation will re-run."
+    )
 
 
 def _fully_passed_profiles(

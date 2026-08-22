@@ -25,7 +25,12 @@ from kcia.waves.blocked import detect_blocked
 from kcia.waves.definitions import WaveDefinition, get_wave, load_waves
 from kcia.waves.prompts import build_prompt, build_prompt_with_stats
 from kcia.waves.session import Session, context_dir, load_manifest, runs_dir
-from kcia.waves.validation import build_validation_plan, run_validation
+from kcia.waves.validation import (
+    build_validation_plan,
+    empty_suite_retry_message,
+    matches_empty_suite,
+    run_validation,
+)
 from kcia.waves.plan_execution import (
     ExecutionBlockError,
     ProfileExecution,
@@ -1113,6 +1118,12 @@ def _context_exists(path: Path) -> bool:
 def _format_validation_failures(report: object) -> str:
     lines = ["validation failed:"]
     for failure in report.failures:  # type: ignore[attr-defined]
+        if matches_empty_suite(failure):
+            lines.append(
+                f"- profile {failure.step.profile_id} ({failure.step.command_name}): "
+                f"{empty_suite_retry_message(failure)}"
+            )
+            continue
         lines.append(
             f"- profile {failure.step.profile_id} ({failure.step.command_name}): "
             f"exit {failure.exit_code}\n{failure.output}"

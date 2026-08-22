@@ -125,7 +125,7 @@ def _merge_chain(chain: list[str], registry: ProfileRegistry) -> ResolvedProfile
         for workflow in spec.workflows:
             workflows[Path(workflow).name] = root / workflow
         adapters = _deep_merge(adapters, spec.adapters.model_dump(exclude_none=True))
-        validation.update(spec.validation.model_dump())
+        validation.update(spec.validation.model_dump(exclude_none=True))
         command_overrides.extend(
             {"when": item.when, "commands": item.commands} for item in spec.command_overrides
         )
