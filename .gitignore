@@ -15,6 +15,7 @@ build/
 .ai/local/
 .ai/cache/
 .ai/generated/
+.ai/history/sessions.jsonl
 
 # Claude Code local settings
 .claude/settings.local.json
