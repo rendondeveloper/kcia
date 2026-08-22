@@ -15,6 +15,7 @@ from typing import Callable
 from kcia.config import resolve_agents
 from kcia.mcp.config import (
     CURSOR_CONFIG,
+    OPENCODE_CONFIG,
     allowed_tools_for_role,
     render_claude_config,
     servers_for_role,
@@ -80,6 +81,8 @@ def fetch_ticket(
         mcp_config = render_claude_config(
             repo_root, FETCH_ROLE, runs_dir(repo_root) / f"mcp-{FETCH_ROLE}.json"
         )
+    elif agent.provider == "opencode":
+        mcp_config = repo_root / OPENCODE_CONFIG
     else:
         mcp_config = repo_root / CURSOR_CONFIG
 

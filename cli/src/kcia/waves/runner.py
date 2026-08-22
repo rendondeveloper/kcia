@@ -17,6 +17,7 @@ from kcia.providers.registry import get_adapter
 from kcia.providers.runner import call_provider, run_provider
 from kcia.mcp.config import (
     CURSOR_CONFIG,
+    OPENCODE_CONFIG,
     allowed_tools_for_role,
     render_claude_config,
     servers_for_role,
@@ -1068,17 +1069,19 @@ def _render_mcp_config(session: Session, wave: WaveDefinition, provider: str) ->
     """The MCP config this wave's role may use, or None when it has no servers.
 
     Only Claude Code accepts a per-invocation config, so that is where the role
-    gating is enforced. Cursor reads `.cursor/mcp.json` for the whole repository;
-    the returned path there only signals that servers exist, so the adapter can
-    auto-approve them instead of hanging on a prompt.
+    gating is enforced. Cursor reads `.cursor/mcp.json` for the whole repository
+    and OpenCode reads `opencode.json`; the returned path there only signals that
+    servers exist (OpenCode has no per-run MCP flag).
     """
     entries = servers_for_role(session.repo_root, wave.agent)
     if not entries:
         return None
-    if provider != "claude":
-        return session.repo_root / CURSOR_CONFIG
-    destination = runs_dir(session.repo_root) / f"mcp-{wave.agent}.json"
-    return render_claude_config(session.repo_root, wave.agent, destination)
+    if provider == "claude":
+        destination = runs_dir(session.repo_root) / f"mcp-{wave.agent}.json"
+        return render_claude_config(session.repo_root, wave.agent, destination)
+    if provider == "opencode":
+        return session.repo_root / OPENCODE_CONFIG
+    return session.repo_root / CURSOR_CONFIG
 
 
 def _write_blocked_response(

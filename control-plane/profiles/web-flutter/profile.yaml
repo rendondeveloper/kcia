@@ -46,6 +46,9 @@ adapters:
     globs: ["**/*.dart"]
   claude:
     nested_file: true
+  opencode:
+    instructions:
+      - ".ai/generated/profiles/web-flutter/**"
 validation:
   required_commands: [test, lint]
   retry_limit: 3

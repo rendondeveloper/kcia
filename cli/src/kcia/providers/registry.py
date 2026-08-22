@@ -10,12 +10,14 @@ from kcia.providers.base import ProviderAdapter
 from kcia.providers.catalog import ProviderCatalogEntry, load_catalog
 from kcia.providers.claude import ClaudeAdapter
 from kcia.providers.cursor import CursorAdapter
+from kcia.providers.opencode import OpenCodeAdapter
 
 AGENT_ROLES = ("planner", "builder")
 
 _BUILTIN_ADAPTERS: dict[str, type] = {
     "claude": ClaudeAdapter,
     "cursor": CursorAdapter,
+    "opencode": OpenCodeAdapter,
 }
 
 

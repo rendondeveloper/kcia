@@ -205,7 +205,25 @@ def test_agent_models_rejects_unknown_provider() -> None:
         cwd=ROOT,
     )
     assert result.returncode == 1
-    assert "Available: claude, cursor" in result.stdout
+    assert "Available: claude, cursor, opencode" in result.stdout
+
+
+def test_catalog_opencode_models_use_real_ids() -> None:
+    """Ids resolved with `opencode models --verbose`; they are `provider/model`."""
+    entry = load_catalog()["opencode"]
+    ids = [model.id for model in entry.models]
+    assert "opencode/big-pickle" in ids
+    assert "opencode/mimo-v2.5-free" in ids
+    assert entry.default_model == "opencode/big-pickle"
+    adapter = get_adapter("opencode")
+    assert adapter.id == "opencode"
+    assert adapter.executable == "opencode"
+    assert adapter.capabilities.supports_effort
+    assert adapter.capabilities.supports_sessions
+    assert adapter.capabilities.supports_streaming
+    assert not adapter.capabilities.supports_tool_restriction
+    assert not adapter.capabilities.supports_mcp_config
+    assert adapter.new_session_id() is None
 
 
 def test_catalog_cursor_models_use_real_ids() -> None:

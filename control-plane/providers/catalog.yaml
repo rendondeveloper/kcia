@@ -29,3 +29,20 @@ providers:
       - { id: gpt-5.3-codex, tier: max, best_for: [implementation] }
       - { id: gemini-3.5-flash, tier: fast, best_for: [documentation] }
     default_model: auto
+  opencode:
+    display_name: "OpenCode"
+    executable: opencode
+    install_hint: "curl -fsSL https://opencode.ai/install | bash"
+    auth: api-key
+    auth_hint: "Run `opencode auth login` and confirm with `opencode auth list`."
+    # Ids resolved with `opencode models --verbose` (OpenCode 1.18.21).
+    # These are the Zen free-tier models; ids are `provider/model`.
+    models:
+      - { id: opencode/mimo-v2.5-free, tier: max, best_for: [planning, complex-implementation] }
+      - { id: opencode/nemotron-3-ultra-free, tier: max, best_for: [planning, complex-implementation] }
+      - { id: opencode/big-pickle, tier: balanced, best_for: [implementation, review] }
+      - { id: opencode/hy3-free, tier: balanced, best_for: [implementation, review] }
+      - { id: opencode/muse-spark-1.2-contributor-free, tier: balanced, best_for: [implementation, documentation] }
+      - { id: opencode/nemotron-3.5-lightning-free, tier: fast, best_for: [documentation, pr-prep] }
+      - { id: opencode/x-preview-f-free, tier: fast, best_for: [documentation] }
+    default_model: opencode/big-pickle

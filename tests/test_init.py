@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 
@@ -38,6 +39,11 @@ def test_init_writes_manifest_bundles_and_adapters(tmp_path: Path) -> None:
     assert (repo / "AGENTS.md").is_file()
     assert (repo / ".cursor" / "rules" / "00-core.mdc").is_file()
     assert list((repo / ".cursor" / "rules").glob("*-backend-dart.mdc"))
+
+    opencode = json.loads((repo / "opencode.json").read_text(encoding="utf-8"))
+    assert opencode["$schema"] == "https://opencode.ai/config.json"
+    assert ".ai/generated/profiles/backend-dart/**" in opencode["instructions"]
+    assert "mcp" in opencode
 
 
 def test_init_gitignores_everything_it_generates(tmp_path: Path) -> None:

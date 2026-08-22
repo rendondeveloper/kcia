@@ -10,8 +10,10 @@ import pytest
 from kcia.mcp.catalog import load_mcp_catalog
 from kcia.mcp.config import (
     CURSOR_CONFIG,
+    OPENCODE_CONFIG,
     render_claude_config,
     render_cursor_config,
+    render_opencode_config,
     resolve_enabled,
     save_enabled,
     servers_for_role,
@@ -20,6 +22,7 @@ from kcia.providers.base import RunRequest
 from kcia.providers.catalog import load_catalog
 from kcia.providers.claude import ClaudeAdapter
 from kcia.providers.cursor import CursorAdapter
+from kcia.providers.opencode import OpenCodeAdapter
 
 
 @pytest.fixture()
@@ -94,6 +97,7 @@ def test_nothing_enabled_yields_no_config(repo: Path) -> None:
     assert servers_for_role(repo, "planner") == []
     assert render_claude_config(repo, "planner", repo / "x.json") is None
     assert render_cursor_config(repo) is None
+    assert render_opencode_config(repo) is None
 
 
 # --- provider wiring ---------------------------------------------------------
@@ -131,6 +135,7 @@ def test_cursor_config_is_gitignored_because_it_can_hold_headers() -> None:
     from kcia.commands.init import GITIGNORE_ENTRIES
 
     assert ".cursor/mcp.json" in GITIGNORE_ENTRIES
+    assert "opencode.json" in GITIGNORE_ENTRIES
 
 
 def test_headers_are_carried_through_when_declared(repo: Path) -> None:
@@ -207,3 +212,57 @@ def test_atlassian_allowlist_excludes_every_write_tool() -> None:
     assert "mcp__atlassian__getJiraIssue" in tools
     # Granting the whole server would pull the write tools back in.
     assert "mcp__atlassian" not in tools
+
+
+def test_opencode_config_lands_in_the_repository(repo: Path) -> None:
+    save_enabled(repo, {"atlassian": {}})
+    written = render_opencode_config(repo)
+    assert written == repo / OPENCODE_CONFIG
+    payload = json.loads(written.read_text(encoding="utf-8"))
+    server = payload["mcp"]["atlassian"]
+    assert server["type"] == "remote"
+    assert server["url"]
+    assert server["enabled"] is True
+
+
+def test_opencode_config_preserves_instructions_and_carries_headers(repo: Path) -> None:
+    existing = {
+        "$schema": "https://opencode.ai/config.json",
+        "instructions": [".ai/generated/profiles/backend-dart/**"],
+        "mcp": {},
+    }
+    (repo / OPENCODE_CONFIG).write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    save_enabled(repo, {"sentry": {"headers": {"Authorization": "Bearer x"}}})
+    written = render_opencode_config(repo)
+    assert written is not None
+    payload = json.loads(written.read_text(encoding="utf-8"))
+    assert payload["instructions"] == [".ai/generated/profiles/backend-dart/**"]
+    assert payload["mcp"]["sentry"]["headers"] == {"Authorization": "Bearer x"}
+    assert payload["mcp"]["sentry"]["type"] == "remote"
+
+
+def test_opencode_config_removes_disabled_catalog_servers_and_keeps_user_ones(
+    repo: Path,
+) -> None:
+    existing = {
+        "$schema": "https://opencode.ai/config.json",
+        "instructions": ["AGENTS.md"],
+        "mcp": {
+            "atlassian": {"type": "remote", "url": "https://example.invalid", "enabled": True},
+            "filesystem": {"type": "local", "command": ["npx", "-y", "mcp-filesystem"]},
+        },
+    }
+    (repo / OPENCODE_CONFIG).write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    save_enabled(repo, {"sentry": {}})
+    payload = json.loads(render_opencode_config(repo).read_text(encoding="utf-8"))
+    assert "atlassian" not in payload["mcp"]
+    assert "sentry" in payload["mcp"]
+    assert payload["mcp"]["filesystem"]["type"] == "local"
+    assert payload["instructions"] == ["AGENTS.md"]
+
+
+def test_opencode_build_command_does_not_take_mcp_config() -> None:
+    adapter = OpenCodeAdapter(load_catalog()["opencode"])
+    cmd = adapter.build_command(_request(Path("/tmp/mcp.json")))
+    assert "--mcp-config" not in cmd
+    assert "--auto" not in cmd

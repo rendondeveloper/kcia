@@ -66,6 +66,9 @@ adapters:
     globs: ["**/*.dart"]
   claude:
     nested_file: true
+  opencode:
+    instructions:
+      - ".ai/generated/profiles/mobile-flutter/**"
 validation:
   required_commands: [test, lint]
   optional_commands: [build]

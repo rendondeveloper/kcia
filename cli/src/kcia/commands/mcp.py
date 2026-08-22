@@ -11,6 +11,7 @@ from kcia.mcp.config import (
     config_path,
     load_enabled,
     render_cursor_config,
+    render_opencode_config,
     resolve_enabled,
     save_enabled,
 )
@@ -63,6 +64,9 @@ def mcp_add(
     written = render_cursor_config(repo)
     if written:
         typer.echo(f"Wrote {written}")
+    written_opencode = render_opencode_config(repo)
+    if written_opencode:
+        typer.echo(f"Wrote {written_opencode}")
 
     if server.cloud_only:
         typer.echo("Note: this server supports Atlassian Cloud only, not Server/Data Center.")
@@ -84,6 +88,7 @@ def mcp_remove(server_id: str = typer.Argument(..., help="Server id to disable."
     enabled.pop(server_id)
     save_enabled(repo, enabled)
     render_cursor_config(repo)
+    render_opencode_config(repo)
     typer.echo(f"Disabled `{server_id}`.")
 
 

@@ -33,9 +33,14 @@ class ClaudeAdapterConfig(BaseModel):
     nested_file: bool = False
 
 
+class OpenCodeAdapterConfig(BaseModel):
+    instructions: list[str] = Field(default_factory=list)
+
+
 class AdapterConfig(BaseModel):
     cursor: CursorAdapterConfig | None = None
     claude: ClaudeAdapterConfig | None = None
+    opencode: OpenCodeAdapterConfig | None = None
 
 
 class EmptyTestSignature(BaseModel):

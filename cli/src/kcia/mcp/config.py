@@ -6,6 +6,8 @@ The two provider CLIs differ in a way that decides the design:
   wave exactly the servers its role is allowed to see.
 * Cursor reads `.cursor/mcp.json` for the whole repository, with no per-run
   override, so role gating there is declarative only.
+* OpenCode reads `mcp` from `opencode.json` at the repository root, also with
+  no per-run override.
 
 Credentials are never stored by kcia: the provider CLI owns the session.
 """
@@ -22,6 +24,7 @@ from kcia.mcp.catalog import McpServer, load_mcp_catalog
 
 CONFIG_SCHEMA_VERSION = 1
 CURSOR_CONFIG = Path(".cursor") / "mcp.json"
+OPENCODE_CONFIG = Path("opencode.json")
 
 
 @dataclass(frozen=True)
@@ -113,4 +116,53 @@ def render_cursor_config(repo_root: Path) -> Path | None:
     payload = {"mcpServers": {entry.server.id: _server_payload(entry) for entry in entries}}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _opencode_server_payload(entry: EnabledServer) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "type": "remote",
+        "url": entry.server.url,
+        "enabled": True,
+    }
+    headers = entry.settings.get("headers")
+    if isinstance(headers, dict) and headers:
+        payload["headers"] = headers
+    return payload
+
+
+def render_opencode_config(repo_root: Path) -> Path | None:
+    """Merge enabled MCP servers into `opencode.json`, preserving other keys.
+
+    OpenCode has no per-run MCP flag, so this file is the whole-repository
+    config. Catalog-managed servers are synced to the enabled set; any other
+    `mcp` entries (user-authored local servers, for example) are left intact.
+    """
+    path = repo_root / OPENCODE_CONFIG
+    existing: dict = {}
+    if path.is_file():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        except json.JSONDecodeError:
+            existing = {}
+
+    entries = resolve_enabled(repo_root)
+    if not entries and not path.is_file():
+        return None
+
+    catalog = load_mcp_catalog()
+    mcp: dict = dict(existing.get("mcp") or {}) if isinstance(existing.get("mcp"), dict) else {}
+    enabled_ids = {entry.server.id for entry in entries}
+    for server_id in list(mcp):
+        if server_id in catalog and server_id not in enabled_ids:
+            del mcp[server_id]
+    for entry in entries:
+        mcp[entry.server.id] = _opencode_server_payload(entry)
+
+    existing["$schema"] = existing.get("$schema") or "https://opencode.ai/config.json"
+    existing["mcp"] = mcp
+    existing.setdefault("instructions", existing.get("instructions") or [])
+    path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
     return path

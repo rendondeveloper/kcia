@@ -10,6 +10,7 @@ from kcia.providers.base import (
 from kcia.providers.catalog import ProviderCatalogEntry, load_catalog
 from kcia.providers.claude import ClaudeAdapter
 from kcia.providers.cursor import CursorAdapter
+from kcia.providers.opencode import OpenCodeAdapter
 from kcia.providers.registry import AGENT_ROLES, build_registry, get_adapter, is_provider_installed
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "AuthStatus",
     "ClaudeAdapter",
     "CursorAdapter",
+    "OpenCodeAdapter",
     "ProviderAdapter",
     "ProviderCapabilities",
     "ProviderCatalogEntry",
