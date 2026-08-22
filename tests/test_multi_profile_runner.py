@@ -140,15 +140,21 @@ def test_integration_check_runs_after_merge(multi_profile_repo: Path) -> None:
         calls.append("profile")
         return RunResult(output_text="# milestones\n", exit_code=0)
 
+    started: list = []
     result = run_wave(
         "documentation-final",
         session,
         force=True,
         provider_runner=runner,
         skip_approval=True,
+        on_wave_start=lambda wave, agent, profile_ids=None: started.append(profile_ids),
     )
     assert result.status == "completed"
     assert calls[-1] == "integration-check"
+    assert len(started) == 3
+    assert set(started[0]) == {"backend-dart", "web-flutter"}
+    assert started[1] == ["mobile-flutter"]
+    assert started[-1] is None
     integration = context_dir(multi_profile_repo) / "integration-check.md"
     assert integration.is_file()
     assert "PASS" in integration.read_text(encoding="utf-8")
@@ -210,21 +216,22 @@ def test_multi_profile_implementation_forwards_progress(
         provider_runner=_emit_read_and_finish,
         skip_approval=True,
         on_event=seen.append,
-        on_wave_start=lambda wave, agent: started.append(
-            (wave.id, agent.provider, agent.model)
+        on_wave_start=lambda wave, agent, profile_ids=None: started.append(
+            (wave.id, tuple(profile_ids or ()))
         ),
     )
 
     assert result.status == "completed"
-    assert len(started) == 1
-    assert started[0][0] == "implementation"
+    assert [item[0] for item in started] == ["implementation", "implementation"]
+    assert set(started[0][1]) == {"backend-dart", "web-flutter"}
+    assert started[1][1] == ("mobile-flutter",)
     assert seen
     assert all(isinstance(event, ToolCallStart) for event in seen)
-    names = {event.name for event in seen}
-    assert names == {
-        "backend-dart Read",
-        "mobile-flutter Read",
-        "web-flutter Read",
+    assert {event.name for event in seen} == {"Read"}
+    assert {event.profile_id for event in seen} == {
+        "backend-dart",
+        "mobile-flutter",
+        "web-flutter",
     }
 
 
@@ -250,11 +257,14 @@ def test_single_profile_execution_block_forwards_progress(
         provider_runner=_emit_read_and_finish,
         skip_approval=True,
         on_event=seen.append,
-        on_wave_start=lambda wave, agent: started.append(wave.id),
+        on_wave_start=lambda wave, agent, profile_ids=None: started.append(
+            (wave.id, tuple(profile_ids or ()))
+        ),
     )
 
     assert result.status == "completed"
-    assert started == ["implementation"]
+    assert started == [("implementation", ("backend-dart",))]
     assert len(seen) == 1
     assert isinstance(seen[0], ToolCallStart)
-    assert seen[0].name == "backend-dart Read"
+    assert seen[0].name == "Read"
+    assert seen[0].profile_id == "backend-dart"

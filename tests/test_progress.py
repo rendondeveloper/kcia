@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from kcia.providers.events import FileRead, FileWrite, TextDelta, ToolCallStart, UsageUpdate
-from kcia.waves.progress import StepProgress, WaveProgress
+from kcia.waves.progress import MultiWaveProgress, StepProgress, WaveProgress
 
 
 @pytest.fixture()
@@ -33,6 +33,32 @@ def _progress(stream: io.StringIO, *, enabled: bool | None = None) -> WaveProgre
         "claude-sonnet-5",
         stream=stream,
         enabled=enabled,
+    )
+
+
+def _multi(
+    stream: io.StringIO,
+    *,
+    enabled: bool | None = None,
+    periodic_updates: bool = False,
+    periodic_tick: float = 2.0,
+    clock=None,
+) -> MultiWaveProgress:
+    kwargs: dict = {
+        "stream": stream,
+        "enabled": enabled,
+        "periodic_updates": periodic_updates,
+        "periodic_tick": periodic_tick,
+    }
+    if clock is not None:
+        kwargs["clock"] = clock
+    return MultiWaveProgress(
+        "implementation",
+        "builder",
+        "cursor",
+        "claude-sonnet-5",
+        ["backend-dart", "mobile-flutter"],
+        **kwargs,
     )
 
 
@@ -297,3 +323,132 @@ def test_fetch_with_progress_enables_periodic_updates(monkeypatch, tmp_path: Pat
     )
     _fetch_with_progress(tmp_path, "ABC-1")
     assert captured.get("periodic_updates") is True
+
+
+def test_multi_events_stay_on_their_own_profile() -> None:
+    progress = _multi(io.StringIO(), enabled=False)
+    progress.handle(FileRead(path="/repo/lib/a.dart"), profile_id="backend-dart")
+    progress.handle(FileWrite(path="/repo/lib/b.dart"), profile_id="mobile-flutter")
+    assert progress.activity_for("backend-dart") == "reading lib/a.dart"
+    assert progress.activity_for("mobile-flutter") == "writing lib/b.dart"
+
+
+def test_multi_handle_routes_by_event_profile_id() -> None:
+    progress = _multi(io.StringIO(), enabled=False)
+    event = FileWrite(path="/repo/lib/a.dart")
+    event.profile_id = "backend-dart"
+    progress.handle(event)
+    assert progress.activity_for("backend-dart") == "writing lib/a.dart"
+    assert progress.activity_for("mobile-flutter") == "waiting"
+
+
+def test_multi_unknown_profile_is_ignored() -> None:
+    progress = _multi(io.StringIO(), enabled=False)
+    progress.handle(FileWrite(path="/repo/lib/a.dart"), profile_id="web-flutter")
+    assert progress.activity_for("backend-dart") == "waiting"
+    assert progress.activity_for("mobile-flutter") == "waiting"
+
+
+def test_multi_note_updates_every_profile() -> None:
+    progress = _multi(io.StringIO(), enabled=False)
+    progress.note("stopping…")
+    assert progress.activity_for("backend-dart") == "stopping…"
+    assert progress.activity_for("mobile-flutter") == "stopping…"
+
+
+def test_multi_non_tty_emits_running_then_per_profile_summaries() -> None:
+    buf = io.StringIO()
+    progress = _multi(buf, enabled=False)
+    progress.start()
+    progress.handle(ToolCallStart(name="Read", input_preview="a.dart"), profile_id="backend-dart")
+    progress.handle(FileWrite(path="/repo/lib/b.dart"), profile_id="mobile-flutter")
+    progress.finish()
+
+    output = buf.getvalue()
+    assert "\r" not in output
+    lines = output.strip().splitlines()
+    assert lines[0] == "implementation · builder · cursor/claude-sonnet-5 — running"
+    assert output.count("completed") == 2
+    assert "backend-dart" in output
+    assert "mobile-flutter" in output
+    assert "1 tool call" in output
+    assert "1 file written" in output
+
+
+def test_multi_non_tty_periodic_emits_one_line_per_profile() -> None:
+    buf = io.StringIO()
+    progress = _multi(buf, enabled=False, periodic_updates=True, periodic_tick=0.05)
+    progress.start()
+    progress.handle(FileWrite(path="/repo/lib/a.dart"), profile_id="backend-dart")
+    progress.handle(FileRead(path="/repo/lib/b.dart"), profile_id="mobile-flutter")
+    time.sleep(0.15)
+    progress.finish()
+
+    output = buf.getvalue()
+    assert "\r" not in output
+    assert "running" not in output
+    status_lines = [
+        line
+        for line in output.strip().splitlines()
+        if line[:1] in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    ]
+    assert len(status_lines) >= 4
+    assert any("backend-dart" in line and "writing lib/a.dart" in line for line in status_lines)
+    assert any("mobile-flutter" in line and "reading lib/b.dart" in line for line in status_lines)
+    assert output.count("completed") == 2
+
+
+def test_multi_finish_emits_per_profile_summary() -> None:
+    clock = {"now": 0.0}
+    buf = io.StringIO()
+    progress = _multi(buf, enabled=False, clock=lambda: clock["now"])
+    progress.start()
+    clock["now"] = 612.0
+    progress.finish()
+
+    output = buf.getvalue()
+    summaries = [line for line in output.strip().splitlines() if "completed" in line]
+    assert len(summaries) == 2
+    assert all("10m12s" in line for line in summaries)
+    assert any("backend-dart" in line for line in summaries)
+    assert any("mobile-flutter" in line for line in summaries)
+
+
+def test_multi_failed_wave_is_reported_as_failed() -> None:
+    buf = io.StringIO()
+    progress = _multi(buf, enabled=False)
+    progress.start()
+    progress.finish(failed=True)
+    assert "failed" in buf.getvalue()
+    assert "completed" not in buf.getvalue()
+
+
+def test_multi_tty_redraws_each_profile_line() -> None:
+    buf = _FakeTty()
+    progress = _multi(buf, enabled=True)
+    progress.handle(FileWrite(path="/repo/lib/a.dart"), profile_id="backend-dart")
+    progress.handle(FileRead(path="/repo/lib/b.dart"), profile_id="mobile-flutter")
+    progress._animate_once()
+    first = buf.getvalue()
+    assert "implementation · builder · cursor/claude-sonnet-5" in first
+    assert "backend-dart" in first
+    assert "mobile-flutter" in first
+    assert "writing lib/a.dart" in first
+    assert "reading lib/b.dart" in first
+    assert first.count("\n") >= 2
+
+    progress._animate_once()
+    assert "\033[" in buf.getvalue()
+
+
+def test_multi_tty_render_stays_within_terminal_width() -> None:
+    buf = _FakeTty()
+    progress = _multi(buf, enabled=True)
+    progress.handle(
+        ToolCallStart(name="Read", input_preview="x" * 500),
+        profile_id="backend-dart",
+    )
+    progress._animate_once()
+    for raw in buf.getvalue().splitlines():
+        line = raw.lstrip("\r")
+        assert len(line) < 200

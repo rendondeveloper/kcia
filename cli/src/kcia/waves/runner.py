@@ -12,7 +12,7 @@ from typing import Callable
 from kcia.config import ResolvedAgent, resolve_agents
 from kcia.providers.base import RunRequest
 from kcia.providers.catalog import load_catalog
-from kcia.providers.events import FileRead, FileWrite, StreamEvent, ToolCallStart
+from kcia.providers.events import StreamEvent
 from kcia.providers.registry import get_adapter
 from kcia.providers.runner import call_provider, run_provider
 from kcia.mcp.config import (
@@ -147,7 +147,7 @@ def retry_wave(
     wave_id: str,
     *,
     on_event: Callable[[StreamEvent], None] | None = None,
-    on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None = None,
+    on_wave_start: Callable[..., None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> WaveResult:
     session.set_wave_status(wave_id, "pending")
@@ -236,7 +236,7 @@ def run_wave(
     validation_error: str | None = None,
     provider_runner: ProviderRunner | None = None,
     on_event: Callable[[StreamEvent], None] | None = None,
-    on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None = None,
+    on_wave_start: Callable[..., None] | None = None,
     skip_approval: bool = False,
     should_cancel: Callable[[], bool] | None = None,
 ) -> WaveResult:
@@ -795,6 +795,7 @@ def _run_integration_check(
     provider_runner: ProviderRunner | None,
     on_event: Callable[[StreamEvent], None] | None,
     should_cancel: Callable[[], bool] | None,
+    before_run: Callable[[], None] | None = None,
 ) -> Path | None:
     """Run a single cross-profile integration check when plan.md declares one."""
     plan_path = context_dir(session.repo_root) / "plan.md"
@@ -855,6 +856,9 @@ def _run_integration_check(
         cwd=repo_root,
     )
 
+    if before_run is not None:
+        before_run()
+
     runner = provider_runner or run_provider
     result = call_provider(runner, adapter, req, on_event, should_cancel)
     _raise_if_cancelled(wave, result)
@@ -869,23 +873,41 @@ def _run_integration_check(
     return target
 
 
+def _call_on_wave_start(
+    callback: Callable[..., None] | None,
+    wave: WaveDefinition,
+    agent: ResolvedAgent,
+    profile_ids: list[str] | None = None,
+) -> None:
+    if callback is None:
+        return
+    if profile_ids is None:
+        callback(wave, agent)
+        return
+    try:
+        callback(wave, agent, profile_ids)
+    except TypeError:
+        callback(wave, agent)
+
+
 def _on_event_for_profile(
     profile_id: str,
     on_event: Callable[[StreamEvent], None] | None,
 ) -> Callable[[StreamEvent], None] | None:
-    """Prefix live activity with the profile that emitted the event.
+    """Attach `profile_id` to each event without rewriting payload fields.
 
-    Parallel builders share one `WaveProgress` line; tagging the event keeps
-    last-event-wins readable instead of mixing anonymous tool names.
+    Parallel builders share a progress reporter; the reporter routes by this
+    attribute so `ToolCallStart.name` / file paths stay clean for logs.
     """
     if on_event is None:
         return None
 
     def handle(event: StreamEvent) -> None:
-        if isinstance(event, ToolCallStart):
-            event = replace(event, name=f"{profile_id} {event.name}")
-        elif isinstance(event, (FileRead, FileWrite)):
-            event = replace(event, path=f"{profile_id}:{event.path}")
+        try:
+            event = replace(event)
+        except TypeError:
+            pass
+        event.profile_id = profile_id
         on_event(event)
 
     return handle
@@ -898,7 +920,7 @@ def _run_multi_profile_wave(
     force: bool,
     validation_error: str | None,
     provider_runner: ProviderRunner | None,
-    on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None,
+    on_wave_start: Callable[..., None] | None,
     skip_approval: bool,
     should_cancel: Callable[[], bool] | None,
     on_event: Callable[[StreamEvent], None] | None,
@@ -921,8 +943,6 @@ def _run_multi_profile_wave(
 
     wave = get_wave(wave_id)
     agent = resolve_agents(session.repo_root)[wave.agent]
-    if on_wave_start is not None:
-        on_wave_start(wave, agent)
 
     # Shared lock to serialize session json writes across profile threads.
     save_lock = threading.Lock()
@@ -967,6 +987,14 @@ def _run_multi_profile_wave(
                     )
                     continue
                 to_run.append(exec_entry)
+
+            if to_run:
+                _call_on_wave_start(
+                    on_wave_start,
+                    wave,
+                    agent,
+                    [entry.profile_id for entry in to_run],
+                )
 
             futures: list[tuple[ProfileExecution, object]] = []
             for exec_entry in to_run:
@@ -1039,6 +1067,11 @@ def _run_multi_profile_wave(
             provider_runner=provider_runner,
             on_event=on_event,
             should_cancel=should_cancel,
+            before_run=(
+                (lambda: _call_on_wave_start(on_wave_start, wave, agent))
+                if on_wave_start is not None
+                else None
+            ),
         )
 
     session.set_wave_status(
@@ -1066,7 +1099,7 @@ def run_waves_until(
     force: bool = False,
     provider_runner: ProviderRunner | None = None,
     on_event: Callable[[StreamEvent], None] | None = None,
-    on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None = None,
+    on_wave_start: Callable[..., None] | None = None,
     skip_approval: bool = False,
 ) -> list[WaveResult]:
     results: list[WaveResult] = []

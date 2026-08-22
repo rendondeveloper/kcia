@@ -24,7 +24,7 @@ from kcia.integrations.tickets import (
 from kcia.paths import find_repo_root
 from kcia.usage import collect_usage, format_duration, format_tokens
 from kcia.waves.definitions import get_wave, load_waves
-from kcia.waves.progress import WaveProgress
+from kcia.waves.progress import MultiWaveProgress, WaveProgress
 from kcia.waves.runner import (
     ApprovalRequired,
     approval_document,
@@ -264,20 +264,30 @@ class _ProgressReporter:
     def __init__(self, *, enabled: bool, periodic_updates: bool = True) -> None:
         self._enabled = enabled
         self._periodic_updates = periodic_updates
-        self._current: WaveProgress | None = None
+        self._current: WaveProgress | MultiWaveProgress | None = None
 
-    def start(self, wave, agent) -> None:  # noqa: ANN001 - callback signature
+    def start(self, wave, agent, profile_ids=None) -> None:  # noqa: ANN001 - callback signature
         self.finish()
         if not self._enabled:
             typer.echo(f"Wave `{wave.id}` running ({agent.provider}/{agent.model}).")
             return
-        self._current = WaveProgress(
-            wave.id,
-            wave.agent,
-            agent.provider,
-            agent.model,
-            periodic_updates=self._periodic_updates,
-        )
+        if profile_ids:
+            self._current = MultiWaveProgress(
+                wave.id,
+                wave.agent,
+                agent.provider,
+                agent.model,
+                profile_ids,
+                periodic_updates=self._periodic_updates,
+            )
+        else:
+            self._current = WaveProgress(
+                wave.id,
+                wave.agent,
+                agent.provider,
+                agent.model,
+                periodic_updates=self._periodic_updates,
+            )
         self._current.start()
 
     def handle(self, event) -> None:  # noqa: ANN001 - callback signature
