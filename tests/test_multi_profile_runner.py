@@ -152,3 +152,109 @@ def test_integration_check_runs_after_merge(multi_profile_repo: Path) -> None:
     integration = context_dir(multi_profile_repo) / "integration-check.md"
     assert integration.is_file()
     assert "PASS" in integration.read_text(encoding="utf-8")
+
+
+def _session_ready_for_implementation(repo: Path) -> Session:
+    session = Session.create(repo, text="implement orders", mode="prompt")
+    for wave_id in ("understanding", "analysis", "documentation-init"):
+        session.set_wave_status(wave_id, "completed")
+    session.save()
+    return Session.load(repo)
+
+
+def _write_single_profile_plan(repo: Path) -> None:
+    plan = """# Plan
+
+Implement orders on the backend.
+
+```yaml
+execution:
+  profiles:
+    - id: backend-dart
+      roots: ["packages/api/**"]
+      summary: "add orders endpoint"
+```
+"""
+    context = context_dir(repo)
+    context.mkdir(parents=True, exist_ok=True)
+    (context / "plan.md").write_text(plan, encoding="utf-8")
+
+
+def _emit_read_and_finish(_adapter, req, *, on_event=None):
+    assert on_event is not None, "multi-profile runs must forward on_event"
+    from kcia.providers.events import ToolCallStart
+
+    on_event(ToolCallStart(name="Read", input_preview="lib/main.dart"))
+    return RunResult(output_text="# done\n", exit_code=0)
+
+
+def test_multi_profile_implementation_forwards_progress(
+    multi_profile_repo: Path, monkeypatch
+) -> None:
+    from kcia.providers.events import ToolCallStart
+    from kcia.waves.validation import ValidationReport
+
+    monkeypatch.setattr(
+        "kcia.waves.runner.run_validation",
+        lambda *args, **kwargs: ValidationReport(success=True),
+    )
+    _write_plan(multi_profile_repo)
+    session = _session_ready_for_implementation(multi_profile_repo)
+    seen: list = []
+    started: list = []
+
+    result = run_wave(
+        "implementation",
+        session,
+        force=True,
+        provider_runner=_emit_read_and_finish,
+        skip_approval=True,
+        on_event=seen.append,
+        on_wave_start=lambda wave, agent: started.append(
+            (wave.id, agent.provider, agent.model)
+        ),
+    )
+
+    assert result.status == "completed"
+    assert len(started) == 1
+    assert started[0][0] == "implementation"
+    assert seen
+    assert all(isinstance(event, ToolCallStart) for event in seen)
+    names = {event.name for event in seen}
+    assert names == {
+        "backend-dart Read",
+        "mobile-flutter Read",
+        "web-flutter Read",
+    }
+
+
+def test_single_profile_execution_block_forwards_progress(
+    multi_profile_repo: Path, monkeypatch
+) -> None:
+    from kcia.providers.events import ToolCallStart
+    from kcia.waves.validation import ValidationReport
+
+    monkeypatch.setattr(
+        "kcia.waves.runner.run_validation",
+        lambda *args, **kwargs: ValidationReport(success=True),
+    )
+    _write_single_profile_plan(multi_profile_repo)
+    session = _session_ready_for_implementation(multi_profile_repo)
+    seen: list = []
+    started: list = []
+
+    result = run_wave(
+        "implementation",
+        session,
+        force=True,
+        provider_runner=_emit_read_and_finish,
+        skip_approval=True,
+        on_event=seen.append,
+        on_wave_start=lambda wave, agent: started.append(wave.id),
+    )
+
+    assert result.status == "completed"
+    assert started == ["implementation"]
+    assert len(seen) == 1
+    assert isinstance(seen[0], ToolCallStart)
+    assert seen[0].name == "backend-dart Read"

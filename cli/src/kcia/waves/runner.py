@@ -12,7 +12,7 @@ from typing import Callable
 from kcia.config import ResolvedAgent, resolve_agents
 from kcia.providers.base import RunRequest
 from kcia.providers.catalog import load_catalog
-from kcia.providers.events import StreamEvent
+from kcia.providers.events import FileRead, FileWrite, StreamEvent, ToolCallStart
 from kcia.providers.registry import get_adapter
 from kcia.providers.runner import call_provider, run_provider
 from kcia.mcp.config import (
@@ -588,8 +588,6 @@ def run_wave_for_profile(
         )
 
         runner = provider_runner or run_provider
-        # Parallel fan-out currently disables live streaming progress to avoid
-        # terminal line collisions.
         result = call_provider(runner, adapter, req, on_event, should_cancel)
         _raise_if_cancelled(wave, result)
 
@@ -871,6 +869,28 @@ def _run_integration_check(
     return target
 
 
+def _on_event_for_profile(
+    profile_id: str,
+    on_event: Callable[[StreamEvent], None] | None,
+) -> Callable[[StreamEvent], None] | None:
+    """Prefix live activity with the profile that emitted the event.
+
+    Parallel builders share one `WaveProgress` line; tagging the event keeps
+    last-event-wins readable instead of mixing anonymous tool names.
+    """
+    if on_event is None:
+        return None
+
+    def handle(event: StreamEvent) -> None:
+        if isinstance(event, ToolCallStart):
+            event = replace(event, name=f"{profile_id} {event.name}")
+        elif isinstance(event, (FileRead, FileWrite)):
+            event = replace(event, path=f"{profile_id}:{event.path}")
+        on_event(event)
+
+    return handle
+
+
 def _run_multi_profile_wave(
     wave_id: str,
     session: Session,
@@ -898,6 +918,11 @@ def _run_multi_profile_wave(
     validate_execution_dependencies(executions)
 
     batches = execution_batches(executions)
+
+    wave = get_wave(wave_id)
+    agent = resolve_agents(session.repo_root)[wave.agent]
+    if on_wave_start is not None:
+        on_wave_start(wave, agent)
 
     # Shared lock to serialize session json writes across profile threads.
     save_lock = threading.Lock()
@@ -956,7 +981,9 @@ def _run_multi_profile_wave(
                             force=force,
                             provider_runner=provider_runner,
                             validation_error=validation_error,
-                            on_event=None,
+                            on_event=_on_event_for_profile(
+                                exec_entry.profile_id, on_event
+                            ),
                             should_cancel=should_cancel,
                             save_lock=save_lock,
                         ),
