@@ -372,6 +372,39 @@ Use `--no-run` to only record it, `--note` to attach a reason, and `kcia work pl
 reprint the plan at any time. The paused run exits with code `2`, distinct from a real
 failure (`1`), so scripts can tell "waiting for a human" from "broken".
 
+#### Sending new information to update the plan
+
+Two ways to feed new information into a plan the agent already produced, before you approve
+it:
+
+```bash
+# Small correction: edit the file yourself, then approve.
+$EDITOR .ai/context/plan.md
+kcia work approve
+
+# Bigger change: hand the agent new context and let it re-plan.
+kcia work answer "Also handle the offline case; use the repository cache, not a direct API call."
+kcia work retry analysis
+kcia work plan          # re-print the updated plan
+kcia work approve
+```
+
+`kcia work answer "<text>"` records the text as an **injection** — it does not touch
+`plan.md` itself. It becomes part of the prompt the next time a wave runs, so pair it with
+`kcia work retry <wave>` (usually `analysis`, the wave that writes `plan.md`) to actually
+have the agent re-plan with it. Injections accumulate: several `answer` calls followed by one
+`retry` sends all of them together, and `--no-retry` records one without triggering a retry
+if you want to batch more first.
+
+If a wave is currently **blocked** waiting on you (`Stopped at ... — the agent cannot
+proceed.`), `kcia work answer "<text>"` retries that exact wave automatically — no separate
+`retry` needed.
+
+Editing `.ai/context/plan.md` by hand is cheaper for small corrections, since prompts are
+composed at `approve`/run time, not when the plan was written — whatever the file says then
+is what the builder gets. Use `answer` + `retry` when the change is big enough that you want
+the planner to reason about it again, not just patch text.
+
 #### When something was missed or not fixed
 
 The waves can finish and the profile validation (`test`, `lint`, `verify`) can pass while
