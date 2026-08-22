@@ -533,8 +533,17 @@ docs: IP-200 - jira guide
 
 The types are `feat`, `fix` and `docs`, and nothing else. In ticket mode the key comes from
 the task, so you never retype it. When there is no ticket **no placeholder is invented** — an
-issue key that does not exist is worse than no key at all. The type is inferred from the
-subject and the changed files, and `--type` always wins.
+issue key that does not exist is worse than no key at all.
+
+**Subject, ticket and type come from the plan, not the prompt.** Once the `analysis` wave
+has written `.ai/context/plan.md` with its `title`/`ticket`/`type`/`summary` block, that is
+what `kcia done` uses — the raw text you typed into `kcia work` only ever expressed intent.
+Precedence, each level falling back to the next when unset: explicit CLI argument/flag (the
+positional subject, `--ticket`, `--type`) → the plan's metadata → the active task's raw
+title/ticket (only when there is no plan yet, e.g. `kcia done` run without going through the
+waves). The plan's `summary` and confirmed decisions (`.ai/context/decisions.md`) also become
+the session-history `summary`/`decisions` on the auto-logged entry, instead of always being
+empty.
 
 Two things never reach a commit: `.ai/local/`, `.ai/cache/` and `.ai/generated/` (regenerable
 output, gitignored), and whatever you happened to have staged for an unrelated reason — kcia
@@ -552,7 +561,10 @@ kcia branch start --base develop     # skip the base-branch question
 kcia branch base                     # just show what it would branch from
 ```
 
-Names follow git flow, and carry the Jira key when the task has one:
+The name and type follow the same precedence as `kcia done`: explicit argument/`--type` →
+the plan's `title`/`type`/`ticket` (once `.ai/context/plan.md` has been written) → the raw
+task title/ticket as a last resort. Names follow git flow, and carry the Jira key when the
+task has one:
 
 ```
 feature/IP-116-add-the-commit-flow

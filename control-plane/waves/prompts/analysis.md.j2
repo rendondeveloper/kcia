@@ -4,7 +4,30 @@ Design the solution. Declare active profiles, validation strategy, and risks.
 
 Output a structured implementation plan suitable for the builder agent.
 
-When multiple profiles will change in parallel, append a fenced YAML block at the very end:
+Branch/commit/session metadata comes from this plan, not the raw prompt. Start
+the plan with a fenced YAML block (`title` short and human-readable, never a
+copy of the prompt; `affected_files` from real analysis, never guessed):
+
+```yaml
+type: fix                # feat | fix | docs
+ticket: AUTH-123         # omit if none
+title: Prevent duplicate device token registration
+summary: One or two sentences — problem, approach, scope.
+affected_files:
+  modify: ["path/to/file.py"]
+  create: ["path/to/new_test.py"]
+  delete: []
+  tests: ["path/to/new_test.py"]
+acceptance_criteria:
+  - One falsifiable "done" statement per line.
+```
+
+Follow with `## Description` prose, and — for auth/persistence/API/event
+changes — `## Current flow` / `## Modified flow` detailed enough for another
+agent to know what behavior changes.
+
+When multiple profiles change in parallel, append a second, separate fenced
+YAML block at the very end (do not merge it into the metadata block above):
 ```yaml
 execution:
   profiles:

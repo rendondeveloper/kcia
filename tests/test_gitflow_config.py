@@ -146,6 +146,30 @@ def test_an_existing_branch_name_is_not_adopted(repo: Path) -> None:
     assert current_branch(repo) == "main"
 
 
+def test_branch_name_prefers_the_plans_title_over_the_raw_prompt(repo: Path) -> None:
+    gitflow(repo)
+    context = repo / ".ai" / "context"
+    context.mkdir(parents=True)
+    (context / "plan.md").write_text(
+        "# Plan\n\n"
+        "```yaml\n"
+        "type: fix\n"
+        "ticket: AUTH-123\n"
+        "title: Prevent duplicate device token registration\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    session = Session.create(
+        repo,
+        text="corrige el problema de que el token se manda varias veces",
+        mode="prompt",
+        title="corrige el problema de que el token se manda varias veces",
+    )
+    outcome = ensure_task_branch(session)
+    assert outcome is not None and outcome.created
+    assert current_branch(repo) == "fix/AUTH-123-prevent-duplicate-device-token-registration"
+
+
 def test_standing_on_the_wrong_branch_checks_out_the_open_cycle(repo: Path) -> None:
     gitflow(repo)
     session = Session.create(repo, text="add a loader", mode="prompt", title="add a loader")

@@ -23,6 +23,7 @@ from kcia.git.repo import (
     current_branch,
     is_git_repo,
 )
+from kcia.waves import plan_metadata
 from kcia.waves.session import Session
 
 
@@ -123,13 +124,20 @@ def ensure_task_branch(session: Session) -> BranchOutcome | None:
             f"stays on `{here}`. Fix it in .ai/local/git.yaml."
         )
 
-    subject = (task.get("title") or task.get("prompt") or "").strip()
-    ticket = task.get("ticket_key")
+    plan = plan_metadata.load(repo)
+    subject = (
+        (plan.title if plan else None)
+        or task.get("title")
+        or task.get("prompt")
+        or ""
+    ).strip()
+    ticket = (plan.ticket if plan else None) or task.get("ticket_key")
     if not subject and not ticket:
         return None
 
+    branch_type = (plan.type if plan else None) or infer_commit_type(subject, ["src"])
     target = branch_name(
-        infer_commit_type(subject, ["src"]), ticket=ticket, subject=subject or (ticket or "task")
+        branch_type, ticket=ticket, subject=subject or (ticket or "task")
     )
     if branch_exists(repo, target):
         # Someone already opened it (a retried task, a colleague's branch name).

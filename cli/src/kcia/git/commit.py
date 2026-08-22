@@ -101,6 +101,7 @@ def plan_commits(
     subject: str,
     ticket: str | None,
     commit_type: str | None = None,
+    plan_type: str | None = None,
     single: bool = False,
 ) -> list[PlannedCommit]:
     """Compose the commits for the current worktree, newest work last.
@@ -108,12 +109,17 @@ def plan_commits(
     The plan is committed separately and first: it is the record of *why* the
     code changed, and keeping it in its own `docs:` commit means reviewers can
     read the intent without it being buried in the diff.
+
+    Type precedence: explicit `commit_type` (`kcia done --type`) always wins,
+    then `plan_type` (from the canonical plan's `type` field), then the
+    keyword-based `infer_commit_type` guess as a last-resort fallback for
+    tasks with no plan.
     """
     plan_paths, code_paths = split_changes(changes(repo_root))
     if not plan_paths and not code_paths:
         raise NothingToCommit("nothing to commit — the worktree is clean.")
 
-    resolved_type = commit_type or infer_commit_type(subject, code_paths)
+    resolved_type = commit_type or plan_type or infer_commit_type(subject, code_paths)
     if resolved_type not in COMMIT_TYPES:
         raise ValueError(
             f"unknown commit type '{resolved_type}'; use one of {', '.join(COMMIT_TYPES)}"

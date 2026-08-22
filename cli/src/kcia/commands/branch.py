@@ -27,6 +27,7 @@ from kcia.git.repo import (
     is_git_repo,
 )
 from kcia.paths import find_repo_root
+from kcia.waves import plan_metadata
 from kcia.waves.session import Session
 
 app = typer.Typer(help="Git-flow branch helpers.", no_args_is_help=True)
@@ -166,13 +167,15 @@ def branch_start(
             raise typer.Exit(code=1)
 
     ticket, title = task_context(repo)
+    plan = plan_metadata.load(repo)
 
-    text = subject or title
+    text = subject or (plan.title if plan else None) or title
     if not text:
         typer.echo("No active task. Pass a subject: `kcia branch start \"add the loader\"`.")
         raise typer.Exit(code=1)
+    ticket = (plan.ticket if plan else None) or ticket
 
-    resolved_type = commit_type or infer_commit_type(text, ["src"])
+    resolved_type = commit_type or (plan.type if plan else None) or infer_commit_type(text, ["src"])
     if resolved_type not in COMMIT_TYPES:
         typer.echo(f"Unknown type '{resolved_type}'; use one of {', '.join(COMMIT_TYPES)}.")
         raise typer.Exit(code=1)

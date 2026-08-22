@@ -119,6 +119,55 @@ def test_type_is_inferred_but_the_flag_wins(worked: Path) -> None:
     assert commits[-1].commit_type == "feat"
 
 
+def test_plan_type_wins_over_inference_but_loses_to_the_flag(worked: Path) -> None:
+    # No explicit type: plan_type overrides the keyword-based guess.
+    commits = plan_commits(worked, subject="add a loader", ticket=None, plan_type="fix")
+    assert commits[-1].commit_type == "fix"
+    # Explicit --type still wins over plan_type.
+    commits = plan_commits(
+        worked, subject="arregla el overflow", ticket=None, plan_type="feat", commit_type="docs"
+    )
+    assert commits[-1].commit_type == "docs"
+    # No plan_type: falls back to the keyword-based guess, unchanged.
+    commits = plan_commits(worked, subject="arregla el overflow", ticket=None)
+    assert commits[-1].commit_type == "fix"
+
+
+def test_cli_derives_subject_type_and_summary_from_the_plan(worked: Path, monkeypatch) -> None:
+    context = worked / ".ai" / "context"
+    (context / "plan.md").write_text(
+        "# Plan\n\n"
+        "```yaml\n"
+        "type: fix\n"
+        "ticket: AUTH-123\n"
+        "title: Prevent duplicate device token registration\n"
+        "summary: Skip the request when the token has not changed.\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    (context / "decisions.md").write_text(
+        "# Decisions\n\n- Cache the last token locally.\n", encoding="utf-8"
+    )
+    Session.create(
+        worked,
+        text="corrige el token que se manda varias veces",
+        mode="prompt",
+        title="corrige el token que se manda varias veces",
+    )
+    monkeypatch.chdir(worked)
+    result = runner.invoke(app, ["done", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert log(worked)[:2] == [
+        "fix: AUTH-123 - Prevent duplicate device token registration",
+        "docs: AUTH-123 - plan — Prevent duplicate device token registration",
+    ]
+    history_path = worked / ".ai" / "history" / "sessions.jsonl"
+    entry = json.loads(history_path.read_text(encoding="utf-8").strip())
+    assert entry["title"] == "Prevent duplicate device token registration"
+    assert entry["summary"] == "Skip the request when the token has not changed."
+    assert entry["decisions"] == ["Cache the last token locally."]
+
+
 def test_cli_writes_both_commits_after_confirmation(worked: Path, monkeypatch) -> None:
     Session.create(worked, text="IP-116", mode="ticket", ticket_key="IP-116", title="add the flow")
     monkeypatch.chdir(worked)

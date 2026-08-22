@@ -38,6 +38,7 @@ from kcia.git.repo import (
 from kcia.waves.progress import StepProgress
 from kcia.history import index, log
 from kcia.waves.definitions import load_waves
+from kcia.waves import plan_metadata
 from kcia.waves.session import Session, session_path
 
 MAX_LISTED_PATHS = 12
@@ -91,22 +92,29 @@ def _auto_log_session(
     repo: Path,
     *,
     title: str,
+    summary: str,
+    decisions: list[str],
     commits: list[PlannedCommit],
     commit_sha: str,
     task_id: str | None,
 ) -> None:
-    if any(char in _NON_ENGLISH_CHARS for char in title):
+    checked = [title, summary, *decisions]
+    offending = next(
+        (text for text in checked if any(char in _NON_ENGLISH_CHARS for char in text)),
+        None,
+    )
+    if offending is not None:
         typer.echo(
             "Session was not saved: session history must be written in English "
-            f"(found non-English characters in: {title!r})."
+            f"(found non-English characters in: {offending!r})."
         )
         return
     try:
         entry = log.entry_from_git(
             repo,
             title=title,
-            summary="",
-            decisions=[],
+            summary=summary,
+            decisions=decisions,
             files=_files_from_planned(commits),
             commit_sha=commit_sha,
             task_id=task_id,
@@ -264,13 +272,22 @@ def commit_command(
     """
     repo = load_repo()
     session = _session(repo)
+    plan = plan_metadata.load(repo)
 
-    resolved_subject = subject or (session.task.get("title") if session else None)
+    resolved_subject = (
+        subject
+        or (plan.title if plan else None)
+        or (session.task.get("title") if session else None)
+    )
     if not resolved_subject:
         typer.echo('No active task. Pass a subject: `kcia done "add the loader"`.')
         raise typer.Exit(code=1)
 
-    resolved_ticket = None if no_ticket else (ticket or (session.task.get("ticket_key") if session else None))
+    resolved_ticket = None if no_ticket else (
+        ticket
+        or (plan.ticket if plan else None)
+        or (session.task.get("ticket_key") if session else None)
+    )
 
     if session is not None:
         pending = _unfinished_waves(session)
@@ -283,6 +300,7 @@ def commit_command(
             subject=resolved_subject,
             ticket=resolved_ticket,
             commit_type=commit_type,
+            plan_type=plan.type if plan else None,
             single=single,
         )
     except NothingToCommit as exc:
@@ -326,7 +344,9 @@ def commit_command(
         task_id = session.task.get("id") if session is not None else None
         _auto_log_session(
             repo,
-            title=resolved_subject,
+            title=(plan.title if plan else None) or resolved_subject,
+            summary=(plan.summary if plan else None) or "",
+            decisions=list(plan.decisions) if plan else [],
             commits=commits,
             commit_sha=written[-1][0],
             task_id=task_id,

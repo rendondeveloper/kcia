@@ -3,3 +3,7 @@
 Record milestones and completion notes in `.ai/context/milestones.md`.
 
 Summarize what shipped, validation evidence, and follow-ups.
+
+Compare the actual changed files against `affected_files` in `plan.md`. If
+they differ, append a `## Deviations` section to `milestones.md`: each extra
+or untouched file plus a one-line reason. Never rewrite `plan.md` itself.
