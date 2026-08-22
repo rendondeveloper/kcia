@@ -4,6 +4,7 @@ from pathlib import Path
 import yaml
 from typer.testing import CliRunner
 
+from kcia.commands.init import GITIGNORE_ENTRIES
 from kcia.main import app
 
 runner = CliRunner()
@@ -45,7 +46,8 @@ def test_init_gitignores_everything_it_generates(tmp_path: Path) -> None:
     runner.invoke(app, ["init", "--yes", "--path", str(repo)])
 
     lines = {line.strip() for line in (repo / ".gitignore").read_text().splitlines()}
-    assert {".ai/local/", ".ai/cache/", ".ai/generated/", "CLAUDE.md", "AGENTS.md", ".cursor/rules/"} <= lines
+    assert set(GITIGNORE_ENTRIES) <= lines
+    assert ".ai/manifest.yaml" in lines
     assert "build/" in lines  # pre-existing entries are preserved
 
 

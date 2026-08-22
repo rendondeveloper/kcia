@@ -47,7 +47,7 @@ A small closed language: combinators `all`/`any`/`not` plus a fixed `_LEAF_PREDI
 
 ### Generated repository state
 
-`kcia init` is meant to produce `.ai/` in the target repo plus provider adapters rendered from `control-plane/templates/` (`render.render_template`, autoescape disabled — these are Markdown/YAML, not HTML). `.ai/local/`, `.ai/cache/`, and `.ai/generated/` are gitignored: treat anything under them as regenerable output, never hand-edited source.
+`kcia init` is meant to produce `.ai/` in the target repo plus provider adapters rendered from `control-plane/templates/` (`render.render_template`, autoescape disabled — these are Markdown/YAML, not HTML). `.ai/local/`, `.ai/cache/`, `.ai/generated/`, `.ai/context/`, `.ai/manifest.yaml`, and `.ai/mcp.yaml` are gitignored: treat them as regenerable output, never hand-edited source.
 
 ## Planning workflow
 

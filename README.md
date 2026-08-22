@@ -279,13 +279,12 @@ already has a development branch, off otherwise.
 | `CLAUDE.md`, `AGENTS.md` | adapters listing active profiles and authority order |
 | `.cursor/rules/NN-<id>.mdc` | one Cursor rule per profile, with `globs` scoped to that profile's roots |
 
-Only `.ai/local/`, `.ai/cache/` and `.ai/generated/` are gitignored — those are pure output,
-regenerable by rerunning `kcia init` any time. `manifest.yaml`, `context/project.md` and
-[`history/sessions.jsonl`](#8-session-history) are meant to be committed: the manifest and
-`project.md` so the team shares the same detected profiles and project facts, and the session
-log because it is the durable record `kcia session log` writes to. `project.md` has one more
-property beyond being tracked: `start` seeds it and then **never overwrites it**, because it is
-the place to add what only you know. See
+`.ai/manifest.yaml` is regenerable output: `kcia init` writes it and adds it to `.gitignore`
+with the rest of the generated tree (`.ai/local/`, `.ai/cache/`, `.ai/generated/`,
+`.ai/context/`, `.ai/mcp.yaml`). [`history/sessions.jsonl`](#8-session-history) is the file
+that is deliberately committed — the durable record `kcia session log` writes to.
+`project.md` is gitignored with `.ai/context/`; `start` still seeds it and then **never
+overwrites it**, because it is the place to add what only you know. See
 [What `kcia init` writes](#2-what-kcia-start-puts-in-your-project) for why it is deliberately
 small.
 
@@ -625,7 +624,7 @@ Every entry is one JSON line appended to `.ai/history/sessions.jsonl` — title,
 decisions, the files touched, and the commit SHA when there is one. Unlike the rest of `.ai/`,
 this file **is meant to be committed**: it is the durable record of what changed and why,
 readable by a human or by a future agent looking for context. `kcia init` keeps it out of
-`.gitignore` on purpose, while `.ai/local/`, `.ai/cache/` and `.ai/generated/` stay ignored.
+`.gitignore` on purpose; regenerable `.ai/` output stays ignored.
 
 Search runs against a local index at `.ai/local/history.sqlite3`, rebuilt from the JSONL
 whenever it falls behind — safe to delete any time. It uses SQLite's FTS5 extension when the
@@ -850,7 +849,8 @@ rm -rf .ai/generated .ai/cache
 kcia init --yes
 ```
 
-Never delete `.ai/manifest.yaml` or `.ai/profiles/` — those are yours.
+Do not delete `.ai/manifest.yaml` by hand — rerun `kcia init` to regenerate it. Local
+profiles under `.ai/profiles/` are also regenerable from the packs you installed.
 
 ### Uninstall
 
@@ -929,18 +929,20 @@ Inside a project you work on, **the regenerable output kcia writes is not commit
 .ai/local/
 .ai/cache/
 .ai/generated/
+.ai/context/
+.ai/manifest.yaml
+.ai/mcp.yaml
 .ai/profiles/
 CLAUDE.md
 AGENTS.md
 .cursor/rules/
+.cursor/mcp.json
 ```
 
-So a teammate cloning your project sees none of the generated adapters or the local index;
-they run `kcia init` once and get their own. `.ai/manifest.yaml`, `.ai/context/project.md`
-and `.ai/history/sessions.jsonl` are deliberately **not** in that list — the manifest and
-`project.md` so the whole team detects the same profiles and shares the same project facts,
-and the session log (see [Session history](#8-session-history)) because it is meant to be a
-durable, shared record.
+So a teammate cloning your project sees none of the generated adapters, the local index, or
+the detected-profile manifest; they run `kcia init` once and get their own.
+`.ai/history/sessions.jsonl` is deliberately **not** in that list (see
+[Session history](#8-session-history)) because it is meant to be a durable, shared record.
 
 This includes `.ai/profiles/`, which lives under the gitignored side. Profiles you write
 there are local to your working copy and do not travel with the project — to share a profile
