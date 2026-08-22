@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from kcia.providers.events import FileRead, FileWrite, TextDelta, ToolCallStart, UsageUpdate
-from kcia.waves.progress import WaveProgress
+from kcia.waves.progress import StepProgress, WaveProgress
 
 
 @pytest.fixture()
@@ -230,3 +230,70 @@ def test_summary_leads_with_elapsed_time() -> None:
 def test_elapsed_is_zero_before_the_wave_starts() -> None:
     progress = _progress(io.StringIO(), enabled=False)
     assert progress.elapsed == 0.0
+
+
+def test_step_progress_off_tty_periodic_emits_status_lines() -> None:
+    buf = io.StringIO()
+    step = StepProgress(
+        "Pushing `main`",
+        stream=buf,
+        enabled=False,
+        periodic_updates=True,
+        periodic_tick=0.05,
+    )
+    step.start()
+    time.sleep(0.12)
+    step.finish()
+
+    output = buf.getvalue()
+    assert "\r" not in output
+    assert "Pushing `main`" in output
+    assert any(line and line[0] in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏" for line in output.splitlines())
+
+
+def test_step_progress_off_tty_without_periodic_stays_silent() -> None:
+    buf = io.StringIO()
+    step = StepProgress(
+        "Pushing `main`",
+        stream=buf,
+        enabled=False,
+        periodic_updates=False,
+    )
+    step.start()
+    step.finish()
+    assert buf.getvalue() == ""
+
+
+def test_fetch_with_progress_enables_periodic_updates(monkeypatch, tmp_path: Path) -> None:
+    from kcia.commands.work import _fetch_with_progress
+    from kcia.integrations.tickets import FetchResult
+
+    captured: dict = {}
+
+    class FakeProgress:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+        def start(self) -> None:
+            return None
+
+        def finish(self, *, failed: bool = False) -> None:
+            return None
+
+        def note(self, text: str) -> None:
+            return None
+
+        def handle(self, event: object) -> None:
+            return None
+
+    monkeypatch.setattr("kcia.commands.work.WaveProgress", FakeProgress)
+    monkeypatch.setattr(
+        "kcia.commands.work.fetch_agent",
+        lambda repo: type("Agent", (), {"provider": "cursor", "model": "x"})(),
+    )
+    monkeypatch.setattr(
+        "kcia.commands.work.fetch_ticket",
+        lambda *args, **kwargs: FetchResult(path=tmp_path / "ticket.md"),
+    )
+    _fetch_with_progress(tmp_path, "ABC-1")
+    assert captured.get("periodic_updates") is True

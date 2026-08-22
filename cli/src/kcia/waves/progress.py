@@ -207,8 +207,11 @@ def _short_path(path: str) -> str:
 class StepProgress:
     """Spinner for a named CLI step (git operations in `kcia done`, not waves).
 
-    On a TTY it reuses the same in-place spinner as `WaveProgress`. Off a TTY it
-    stays silent — the caller prints the step label itself so logs stay linear.
+    On a TTY it reuses the same in-place spinner as `WaveProgress`. Off a TTY,
+    when `periodic_updates` is on (the default), it reprints a status line every
+    few seconds so a long git step does not look stuck. The caller still prints
+    the step label itself. Pass `periodic_updates=False` to stay silent off a
+    TTY.
     """
 
     def __init__(
@@ -218,6 +221,8 @@ class StepProgress:
         stream: TextIO | None = None,
         enabled: bool | None = None,
         clock: Callable[[], float] | None = None,
+        periodic_updates: bool = True,
+        periodic_tick: float = _PERIODIC_TICK,
     ) -> None:
         self._label = label
         self._stream = stream if stream is not None else sys.stderr
@@ -229,6 +234,8 @@ class StepProgress:
         self._width = 0
         self._started_at: float | None = None
         self._clock = clock or time.monotonic
+        self._periodic_updates = periodic_updates
+        self._periodic_tick = periodic_tick
 
     def __enter__(self) -> StepProgress:
         self.start()
@@ -240,6 +247,11 @@ class StepProgress:
     def start(self) -> None:
         self._started_at = self._clock()
         if not self._tty:
+            if self._periodic_updates:
+                self._thread = threading.Thread(
+                    target=self._animate_periodic, daemon=True
+                )
+                self._thread.start()
             return
         self._thread = threading.Thread(target=self._animate, daemon=True)
         self._thread.start()
@@ -251,10 +263,23 @@ class StepProgress:
             self._thread = None
         self._clear()
 
+    @property
+    def elapsed(self) -> float:
+        """Seconds since start(); 0 before the step begins."""
+        if self._started_at is None:
+            return 0.0
+        return self._clock() - self._started_at
+
     def _animate(self) -> None:
         while not self._stop.is_set():
             self._render(f"{next(self._spinner)} {self._label}")
             self._stop.wait(_TICK)
+
+    def _animate_periodic(self) -> None:
+        while not self._stop.wait(self._periodic_tick):
+            self._write_line(
+                f"{next(self._spinner)} {self._label} · {format_duration(self.elapsed)}"
+            )
 
     def _render(self, text: str) -> None:
         columns = shutil.get_terminal_size((80, 24)).columns
@@ -269,3 +294,7 @@ class StepProgress:
             self._stream.write("\r" + " " * self._width + "\r")
             self._stream.flush()
             self._width = 0
+
+    def _write_line(self, text: str) -> None:
+        self._stream.write(text + "\n")
+        self._stream.flush()

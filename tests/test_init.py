@@ -21,6 +21,7 @@ def test_init_writes_manifest_bundles_and_adapters(tmp_path: Path) -> None:
     repo = _repo(tmp_path, "melos_mono")
     result = runner.invoke(app, ["init", "--yes", "--path", str(repo)])
     assert result.exit_code == 0, result.output
+    assert "Detecting profiles…" in result.output
 
     manifest = yaml.safe_load((repo / ".ai" / "manifest.yaml").read_text())
     assert manifest["schema_version"] == 2
@@ -97,6 +98,7 @@ def test_init_reports_when_nothing_detected(tmp_path: Path) -> None:
     repo.mkdir()
     result = runner.invoke(app, ["init", "--yes", "--path", str(repo)])
     assert result.exit_code == 1
+    assert "Detecting profiles…" in result.output
     assert "No profiles detected" in result.output
 
 

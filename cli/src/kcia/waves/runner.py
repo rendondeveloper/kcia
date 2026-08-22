@@ -136,10 +136,24 @@ def find_blocked_wave(session: Session) -> WaveDefinition | None:
     )
 
 
-def retry_wave(session: Session, wave_id: str) -> WaveResult:
+def retry_wave(
+    session: Session,
+    wave_id: str,
+    *,
+    on_event: Callable[[StreamEvent], None] | None = None,
+    on_wave_start: Callable[[WaveDefinition, ResolvedAgent], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> WaveResult:
     session.set_wave_status(wave_id, "pending")
     session.save()
-    return run_wave(wave_id, session, force=True)
+    return run_wave(
+        wave_id,
+        session,
+        force=True,
+        on_event=on_event,
+        on_wave_start=on_wave_start,
+        should_cancel=should_cancel,
+    )
 
 
 def check_requires(session: Session, wave: WaveDefinition, *, force: bool = False) -> None:

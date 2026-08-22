@@ -29,6 +29,7 @@ from kcia.profiles.inheritance import resolve_inheritance
 from kcia.profiles.loader import load_registry
 from kcia.project_index import build_project_facts
 from kcia.render import render_template
+from kcia.waves.progress import StepProgress
 
 # `.ai/local/`, `.ai/cache/`, `.ai/generated/`, `.ai/context/`, `.ai/manifest.yaml`,
 # and `.ai/mcp.yaml` are regenerable from `kcia init` / `kcia work` / `kcia mcp`,
@@ -103,7 +104,9 @@ def init(
         typer.echo("No profiles available. Check the control plane installation.")
         raise typer.Exit(code=1)
 
-    hits = detect(repo_root, registry)
+    typer.echo("Detecting profiles…")
+    with StepProgress("Detecting profiles…"):
+        hits = detect(repo_root, registry)
     if not hits:
         typer.echo(
             "No profiles detected. Add a profile under `.ai/profiles/` or run "

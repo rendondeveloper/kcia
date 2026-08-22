@@ -49,6 +49,9 @@ def test_task_answer_retries_blocked_wave(git_repo: Path, monkeypatch) -> None:
     assert result.exit_code == 0, result.stdout
     mock_retry.assert_called_once()
     assert mock_retry.call_args[0][1] == "understanding"
+    assert mock_retry.call_args.kwargs["on_event"] is not None
+    assert mock_retry.call_args.kwargs["on_wave_start"] is not None
+    assert mock_retry.call_args.kwargs["should_cancel"] is not None
     assert "completed on retry" in result.stdout
     session = Session.load(git_repo)
     assert session.data["injections"] == ["The profile screen."]
@@ -84,3 +87,20 @@ def test_task_answer_no_retry_preserves_record_only(git_repo: Path, monkeypatch)
     assert result.stdout.strip() == "Injection recorded."
     session = Session.load(git_repo)
     assert session.data["injections"] == ["The profile screen."]
+
+
+def test_work_retry_wires_progress_into_retry_wave(git_repo: Path, monkeypatch) -> None:
+    Session.create(git_repo, text="fix the overflow", mode="prompt")
+    monkeypatch.chdir(git_repo)
+
+    completed = WaveResult(wave_id="understanding", status="completed")
+    with patch("kcia.commands.work.retry_wave", return_value=completed) as mock_retry:
+        result = runner.invoke(app, ["work", "retry"])
+
+    assert result.exit_code == 0, result.stdout
+    mock_retry.assert_called_once()
+    assert mock_retry.call_args[0][1] == "understanding"
+    assert mock_retry.call_args.kwargs["on_event"] is not None
+    assert mock_retry.call_args.kwargs["on_wave_start"] is not None
+    assert mock_retry.call_args.kwargs["should_cancel"] is not None
+    assert "completed on retry" in result.stdout

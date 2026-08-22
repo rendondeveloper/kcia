@@ -173,7 +173,13 @@ def _create_task(
 def _fetch_with_progress(repo: Path, ticket_key: str) -> FetchResult:
     """Run the fetch behind the same live status line the waves use."""
     agent = fetch_agent(repo)
-    progress = WaveProgress(f"fetch {ticket_key}", "planner", agent.provider, agent.model)
+    progress = WaveProgress(
+        f"fetch {ticket_key}",
+        "planner",
+        agent.provider,
+        agent.model,
+        periodic_updates=True,
+    )
     result = FetchResult(error="interrupted")
     progress.start()
     try:
@@ -255,7 +261,7 @@ def _render_approval_gate(gate: ApprovalRequired) -> None:
 class _ProgressReporter:
     """Owns the live status line for the wave currently running."""
 
-    def __init__(self, *, enabled: bool, periodic_updates: bool = False) -> None:
+    def __init__(self, *, enabled: bool, periodic_updates: bool = True) -> None:
         self._enabled = enabled
         self._periodic_updates = periodic_updates
         self._current: WaveProgress | None = None
@@ -316,7 +322,7 @@ def _execute(
     force: bool,
     quiet: bool,
     yes: bool,
-    periodic_updates: bool = False,
+    periodic_updates: bool = True,
 ) -> None:
     stalled = next(
         (wave for wave in load_waves() if session.wave_status(wave.id) == "blocked"), None
@@ -363,6 +369,34 @@ def _render_cancelled(wave_id: str) -> None:
     typer.echo("")
     typer.echo(f"Stopped `{wave_id}`. The provider was terminated and nothing was written.")
     typer.echo("It is pending again — `kcia work` starts it from the top.")
+
+
+def _retry_with_progress(session: Session, wave_id: str) -> None:
+    """Re-run a wave with the same live status line as `kcia work`."""
+    reporter = _ProgressReporter(enabled=True, periodic_updates=True)
+    with interruptible(on_request=lambda: reporter.note("stopping…")) as cancel:
+        try:
+            result = retry_wave(
+                session,
+                wave_id,
+                on_event=reporter.handle,
+                on_wave_start=reporter.start,
+                should_cancel=cancel,
+            )
+        except ApprovalRequired as gate:
+            reporter.finish()
+            _render_approval_gate(gate)
+            raise typer.Exit(code=2) from gate
+        except WaveBlocked as blocked:
+            reporter.finish()
+            _render_blocked(blocked)
+            raise typer.Exit(code=2) from blocked
+        except WaveCancelled as stopped:
+            reporter.finish(failed=True)
+            _render_cancelled(stopped.wave.id)
+            raise typer.Exit(code=130) from stopped
+        reporter.finish(failed=result.status != "completed")
+        report_retry_result(wave_id, result)
 
 
 def _run_loop(
@@ -635,7 +669,7 @@ def work_answer(
         typer.echo("No wave is blocked; injection recorded for the next wave that runs.")
         return
 
-    report_retry_result(blocked.id, retry_wave(session, blocked.id))
+    _retry_with_progress(session, blocked.id)
 
 
 @app.command("abort")
@@ -764,7 +798,7 @@ def work_retry(wave_id: Optional[str] = typer.Argument(None)) -> None:
             typer.echo("No wave to retry.")
             raise typer.Exit(code=1)
         target_id = pending.id
-    report_retry_result(target_id, retry_wave(session, target_id))
+    _retry_with_progress(session, target_id)
 
 
 @app.command("skip")
