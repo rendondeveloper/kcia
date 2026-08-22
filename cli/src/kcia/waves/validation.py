@@ -25,7 +25,7 @@ class ValidationStep:
     cwd: Path
     command_name: str
     command: str
-    empty_suite_signature: dict[str, Any] | None = None
+    empty_suite_signature: dict[str, Any] | None = field(default=None, compare=False)
 
 
 @dataclass
