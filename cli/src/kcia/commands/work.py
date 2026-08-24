@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -110,6 +111,57 @@ app = typer.Typer(
     invoke_without_command=True,
     cls=WorkGroup,
 )
+
+
+def _read_utf8(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        typer.echo(f"File not found: {path}")
+        raise typer.Exit(code=1)
+    except (OSError, UnicodeDecodeError) as exc:
+        typer.echo(f"Could not read {path}: {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+def _resolve_input_text(
+    positional: str | None,
+    file: Path | None,
+    from_stdin: bool,
+    *,
+    required: bool,
+) -> str | None:
+    """Take exactly one text source, then strip and normalize line endings."""
+    provided = sum(
+        (positional is not None, file is not None, from_stdin)
+    )
+    if provided > 1:
+        typer.echo("Pass only one of: positional text, --file, or --stdin.")
+        raise typer.Exit(code=1)
+    if file is not None:
+        raw = _read_utf8(file)
+    elif from_stdin:
+        raw = sys.stdin.read()
+    elif positional is not None:
+        raw = positional
+    else:
+        if required:
+            typer.echo("Pass answer text, --file, or --stdin.")
+            raise typer.Exit(code=1)
+        return None
+    normalized = normalize_text(raw)
+    if not normalized:
+        if required:
+            typer.echo("Answer text is empty.")
+            raise typer.Exit(code=1)
+        return None
+    return normalized
+
+
+def _echo_answer_usage() -> None:
+    typer.echo('  kcia work answer "<your answer>"')
+    typer.echo("  kcia work answer --file <path>")
+    typer.echo("  kcia work answer --stdin")
 
 
 def _validate_scope(repo: Path, scope: list[str]) -> None:
@@ -231,7 +283,7 @@ def _render_blocked(blocked: WaveBlocked) -> None:
     if blocked.output_path:
         typer.echo(f"Full response: {blocked.output_path}")
     typer.echo("Answer it, then resume:")
-    typer.echo('  kcia work answer "<your answer>"')
+    _echo_answer_usage()
 
 
 def _render_approval_gate(gate: ApprovalRequired) -> None:
@@ -256,6 +308,8 @@ def _render_approval_gate(gate: ApprovalRequired) -> None:
     typer.echo("  kcia work plan               print it here")
     typer.echo("  kcia work approve            approve and continue")
     typer.echo('  kcia work answer "..."       add context, then re-run the planning wave')
+    typer.echo("  kcia work answer --file PATH  long context from a file")
+    typer.echo("  kcia work answer --stdin       long context from stdin")
     typer.echo("  kcia work abort              stop here")
 
 
@@ -343,7 +397,7 @@ def _execute(
         typer.echo(f"`{stalled.id}` is waiting for an answer:")
         typer.echo(f"  {state.get('blocked_reason', 'reason not recorded')}")
         typer.echo("Answer it, then resume:")
-        typer.echo('  kcia work answer "<your answer>"')
+        _echo_answer_usage()
         raise typer.Exit(code=2)
 
     problems = check_agents_ready(session.repo_root)
@@ -526,6 +580,17 @@ def work(
         "-y",
         help="Skip the approval gate before waves that change code.",
     ),
+    file: Optional[Path] = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Read task text from a UTF-8 file (safer than quoting a long spec).",
+    ),
+    from_stdin: bool = typer.Option(
+        False,
+        "--stdin",
+        help="Read task text from stdin.",
+    ),
 ) -> None:
     """Create a task and run the pipeline, or continue the active task."""
     if ctx.invoked_subcommand is not None:
@@ -536,6 +601,10 @@ def work(
 
     text: str | None = state.get("work_text")
     pending_options = state.get("_work_option_args") or []
+    if ("--file" in pending_options or "-f" in pending_options) and file is None:
+        return
+    if "--stdin" in pending_options and not from_stdin:
+        return
     if text and pending_options:
         if "--scope" in pending_options and not scope:
             return
@@ -557,6 +626,8 @@ def work(
             return
         if "--prompt" in pending_options and not prompt:
             return
+
+    text = _resolve_input_text(text, file, from_stdin, required=False)
 
     if text is None:
         session = _load_runnable_session()
@@ -653,7 +724,20 @@ def work_fetch() -> None:
 @app.command("answer")
 @app.command("inject", hidden=True)
 def work_answer(
-    text: list[str] = typer.Argument(..., help="Answer or extra context."),
+    text: Optional[list[str]] = typer.Argument(
+        None, help="Answer or extra context. Prefer --file or --stdin for long text."
+    ),
+    file: Optional[Path] = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Read the answer from a UTF-8 file.",
+    ),
+    from_stdin: bool = typer.Option(
+        False,
+        "--stdin",
+        help="Read the answer from stdin.",
+    ),
     no_retry: bool = typer.Option(
         False,
         "--no-retry",
@@ -670,10 +754,9 @@ def work_answer(
     except FileNotFoundError as exc:
         typer.echo(str(exc))
         raise typer.Exit(code=1) from exc
-    normalized = normalize_text(" ".join(text))
-    if not normalized:
-        typer.echo("Answer text is empty.")
-        raise typer.Exit(code=1)
+    positional = " ".join(text) if text else None
+    normalized = _resolve_input_text(positional, file, from_stdin, required=True)
+    assert normalized is not None
     session.add_injection(normalized)
     if no_retry:
         typer.echo("Injection recorded.")

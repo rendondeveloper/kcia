@@ -103,7 +103,7 @@ def test_task_answer_rejects_whitespace_only_text(git_repo: Path, monkeypatch) -
     assert session.data["injections"] == []
 
 
-def test_task_answer_normalizes_whitespace(git_repo: Path, monkeypatch) -> None:
+def test_task_answer_strips_surrounding_whitespace(git_repo: Path, monkeypatch) -> None:
     Session.create(git_repo, text="fix the overflow", mode="prompt")
     monkeypatch.chdir(git_repo)
 
@@ -114,7 +114,71 @@ def test_task_answer_normalizes_whitespace(git_repo: Path, monkeypatch) -> None:
 
     assert result.exit_code == 0, result.stdout
     session = Session.load(git_repo)
-    assert session.data["injections"] == ["Extra context"]
+    assert session.data["injections"] == ["Extra   context"]
+
+
+def test_task_answer_reads_file(git_repo: Path, monkeypatch) -> None:
+    Session.create(git_repo, text="fix the overflow", mode="prompt")
+    monkeypatch.chdir(git_repo)
+    spec = "# Spec\n\n1. Keep lists\n2. Keep `paths`"
+    path = git_repo / "answer.md"
+    path.write_text(f"\n{spec}\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["work", "answer", "--no-retry", "--file", str(path)],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    session = Session.load(git_repo)
+    assert session.data["injections"] == [spec]
+
+
+def test_task_answer_reads_stdin(git_repo: Path, monkeypatch) -> None:
+    Session.create(git_repo, text="fix the overflow", mode="prompt")
+    monkeypatch.chdir(git_repo)
+    spec = "# Spec\n\n---\n\nKeep blank lines."
+
+    result = runner.invoke(
+        app,
+        ["work", "answer", "--no-retry", "--stdin"],
+        input=f"\n{spec}\n",
+    )
+
+    assert result.exit_code == 0, result.stdout
+    session = Session.load(git_repo)
+    assert session.data["injections"] == [spec]
+
+
+def test_task_answer_rejects_file_and_positional(git_repo: Path, monkeypatch) -> None:
+    Session.create(git_repo, text="fix the overflow", mode="prompt")
+    monkeypatch.chdir(git_repo)
+    path = git_repo / "answer.md"
+    path.write_text("from file", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["work", "answer", "--no-retry", "--file", str(path), "also positional"],
+    )
+
+    assert result.exit_code == 1, result.stdout
+    assert "Pass only one of" in result.stdout
+    session = Session.load(git_repo)
+    assert session.data["injections"] == []
+
+
+def test_task_answer_rejects_empty_file(git_repo: Path, monkeypatch) -> None:
+    Session.create(git_repo, text="fix the overflow", mode="prompt")
+    monkeypatch.chdir(git_repo)
+    path = git_repo / "empty.md"
+    path.write_text("  \n", encoding="utf-8")
+
+    result = runner.invoke(app, ["work", "answer", "--file", str(path)])
+
+    assert result.exit_code == 1, result.stdout
+    assert "Answer text is empty." in result.stdout
+    session = Session.load(git_repo)
+    assert session.data["injections"] == []
 
 
 def test_work_retry_wires_progress_into_retry_wave(git_repo: Path, monkeypatch) -> None:

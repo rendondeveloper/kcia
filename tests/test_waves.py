@@ -62,14 +62,61 @@ def test_work_creates_session_json(git_repo: Path, monkeypatch) -> None:
     assert data["task"]["prompt"] == "arregla el overflow"
 
 
-def test_work_normalizes_prompt_whitespace(git_repo: Path, monkeypatch) -> None:
+def test_work_strips_prompt_whitespace_without_collapsing(git_repo: Path, monkeypatch) -> None:
     monkeypatch.chdir(git_repo)
     with patch("kcia.commands.work._execute"):
         result = runner.invoke(app, ["work", "  fix   the overflow  "])
     assert result.exit_code == 0, result.stdout
     data = json.loads(session_path(git_repo).read_text(encoding="utf-8"))
-    assert data["task"]["prompt"] == "fix the overflow"
-    assert data["task"]["title"] == "fix the overflow"
+    assert data["task"]["prompt"] == "fix   the overflow"
+    assert data["task"]["title"] == "fix   the overflow"
+
+
+def test_work_reads_file(git_repo: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repo)
+    spec = "# Spec\n\n---\n\n1. Keep lists\n2. Keep `cli/src/kcia/text.py`"
+    path = git_repo / "spec.md"
+    path.write_text(f"\n{spec}\n", encoding="utf-8")
+    with patch("kcia.commands.work._execute"):
+        result = runner.invoke(app, ["work", "--file", str(path)])
+    assert result.exit_code == 0, result.stdout
+    data = json.loads(session_path(git_repo).read_text(encoding="utf-8"))
+    assert data["task"]["prompt"] == spec
+    assert data["task"]["title"] == spec
+
+
+def test_work_reads_stdin(git_repo: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repo)
+    spec = "# Spec\n\nKeep blank lines."
+    with patch("kcia.commands.work._execute"):
+        result = runner.invoke(app, ["work", "--stdin"], input=f"\n{spec}\n")
+    assert result.exit_code == 0, result.stdout
+    data = json.loads(session_path(git_repo).read_text(encoding="utf-8"))
+    assert data["task"]["prompt"] == spec
+
+
+def test_work_rejects_file_and_positional(git_repo: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repo)
+    path = git_repo / "spec.md"
+    path.write_text("from file", encoding="utf-8")
+    result = runner.invoke(app, ["work", "positional text", "--file", str(path)])
+    assert result.exit_code == 1, result.stdout
+    assert "Pass only one of" in result.stdout
+    assert not session_path(git_repo).is_file()
+
+
+def test_work_rejects_file_and_stdin(git_repo: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repo)
+    path = git_repo / "spec.md"
+    path.write_text("from file", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["work", "--file", str(path), "--stdin"],
+        input="from stdin",
+    )
+    assert result.exit_code == 1, result.stdout
+    assert "Pass only one of" in result.stdout
+    assert not session_path(git_repo).is_file()
 
 
 def test_work_whitespace_only_text_continues_active_session(

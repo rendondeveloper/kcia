@@ -1,74 +1,93 @@
-# Normalize free-text input for `kcia work` and `kcia work answer`
+# Safe text input for `kcia work` and `kcia work answer`
 
 ## Analysis
 
-The user asked (in a mix of Spanish/English) for the free text passed to `kcia work "<text>"` and
-`kcia work answer "<text>"` to be normalized before it is used, so that stray whitespace does not
-end up baked into the task/prompt text. This is unrelated to a second topic raised earlier (a
-`photoUrl` mapping bug in an unrelated checklist app, `system-track-monitor.web.app`) — the user's
-clarifying answer confirms the actual request is scoped to `kcia`'s own `work`/`answer` text
-handling, and the zsh `no matches found: dos` error was a shell-quoting issue on their end, not a
-bug in kcia.
+Original ask: normalize the free text passed to `kcia work "<text>"` / `kcia work answer "<text>"`
+so stray whitespace doesn't leak into the stored task/prompt text.
+
+Follow-up ask (this revision): the user tried passing a large, multi-line Markdown spec
+(headings, `---` rules, numbered lists, backticked paths, parens) directly as a quoted argument to
+`kcia work "..."` and it "no lo puede leer bien" (doesn't read it well). This is not a whitespace
+problem — it's that **arbitrarily-structured multi-line text does not survive shell argv reliably**:
+double-quoted strings in zsh/bash still expand `` ` `` (command substitution), `$` (variable/command
+substitution), and can be broken by an odd number of embedded `"`; long pastes with blank lines are
+also just unwieldy and error-prone to quote correctly by hand. No amount of normalization *inside*
+kcia fixes this, because by the time kcia's Python code sees `sys.argv`, the shell has already
+possibly mis-parsed or mangled the text. The real fix is giving the user a way to supply this text
+that never goes through shell argument parsing at all: read it from a file or from stdin.
+
+This supersedes the whitespace-collapsing behavior proposed in the first draft of this plan for the
+*body* text case: collapsing all internal whitespace/newlines to single spaces (as originally
+proposed) would destroy exactly the Markdown structure (headings, lists, blank-line-separated
+sections) the user needs to preserve when injecting a spec like the one above. Whitespace handling
+is narrowed to trimming only (see below).
 
 ### Current behavior
 
-- `cli/src/kcia/commands/work.py::WorkGroup.resolve_command` collects the leading non-flag
-  argv tokens into `state["work_text"]` via `" ".join(text_parts)` (line 95). This is the text used
-  to create a new task (`kcia work "<text>"`).
-- `work_answer` (the `answer`/`inject` command, line 652-682) takes `text: list[str]` from Typer and
-  joins it with `" ".join(text)` (line 672) before calling `session.add_injection(...)`.
-- Neither path strips leading/trailing whitespace or collapses internal runs of whitespace
-  (e.g. multiple spaces, tabs, embedded newlines from a multi-line paste) before the text is:
-  - used as the task `title`/`prompt` (`Session.create`, `session.py:145-155`), and
-  - matched against the ticket-key regex in `classify_input` (`session.py:86`, which already does
-    `text.strip()` locally for matching, but the *stored* `text`/`title`/`prompt` themselves are
-    not stripped/normalized), and
-  - appended verbatim to `session.data["injections"]` (`add_injection`, `session.py:332`).
-- Downstream, these strings are written into `.ai/*` session/manifest files and are presumably
-  later interpolated into agent prompts (wave runner), so unnormalized whitespace (leading/trailing
-  spaces, doubled spaces, stray newlines from copy-paste) propagates into the prompt text.
+- `cli/src/kcia/commands/work.py::WorkGroup.resolve_command` collects leading non-flag argv tokens
+  into `state["work_text"]` via `" ".join(text_parts)` (line 95) — this only ever sees whatever the
+  shell handed to argv, already possibly mangled for large/complex pastes.
+- `work_answer` (`answer`/`inject`, lines 652-682) takes `text: list[str]` from Typer, joins with
+  `" ".join(text)` (line 672), same constraint.
+- Neither command has a way to read text from a file or stdin today — argv is the only input path.
+- Downstream: `Session.create` (`session.py:129-168`) stores the text as `task["title"]` /
+  `task["prompt"]`; `add_injection` (`session.py:332`) appends verbatim to `injections`. Both are
+  presumably later interpolated into agent prompts by the wave runner.
 
 ### Proposed change
 
-Add a single small text-normalization helper and apply it at the two entry points where free text
-enters the system, so all downstream consumers (`Session.create`, `add_injection`, `classify_input`)
-already receive normalized text — no changes needed further downstream.
+**1. New input paths that bypass the shell (the actual fix for this report):**
 
-- New function `normalize_text(text: str) -> str` in a small shared location — proposed:
-  `cli/src/kcia/text.py` (new module; `git/flow.py` and `profiles/schema.py` were checked and don't
-  have a generic reusable helper here, so a new small module keeps this out of unrelated files).
-  Behavior: strip leading/trailing whitespace, collapse any run of whitespace (including newlines/
-  tabs) into a single ASCII space (`re.sub(r"\s+", " ", text).strip()`). This does not attempt
-  Unicode NFC normalization or quote/shell escaping — the shell-quoting issue the user saw is
-  outside kcia's control (it happens before argv reaches Python), so this plan only addresses
-  whitespace cleanup of the text kcia itself receives via argv/Typer.
-- Apply `normalize_text` to:
-  - `state["work_text"]` in `WorkGroup.resolve_command` (`commands/work.py:95`), right after the
-    `" ".join(text_parts)` call — this is the text used for `kcia work "<text>"` task creation.
-  - the joined text in `work_answer` (`commands/work.py:672`), replacing
-    `session.add_injection(" ".join(text))` with `session.add_injection(normalize_text(" ".join(text)))`.
-- Guard against normalizing to an empty string: if `normalize_text(text)` is empty (e.g. the user
-  passed only whitespace), keep existing behavior for `work_text` being falsy (routes to "continue
-  active session" in `work()`, `commands/work.py:560`) and, for `work_answer`, echo an error and
-  exit 1 rather than recording an empty injection (matches the pattern used elsewhere in this file,
-  e.g. `_validate_scope`).
+- Add `--file PATH` / `-f PATH` to both `kcia work` and `kcia work answer`. Reads the full file
+  contents (UTF-8) as the text, instead of (or in addition to — mutually exclusive, error if both
+  given) the positional text.
+- Add stdin support: `kcia work --stdin` / `kcia work answer --stdin` reads all of stdin as the
+  text. This needs to be an explicit flag rather than "no positional args = read stdin", because
+  `kcia work` with no args already means "continue the active session" (`commands/work.py:560-564`)
+  and must not change behavior.
+- Both new flags are mutually exclusive with each other and with positional text: passing more than
+  one text source is a usage error (`typer.echo(...)` + `raise typer.Exit(code=1)`), matching the
+  file's existing error-reporting convention.
+- Document in `--help` and in `_render_blocked`/`_render_approval_gate` hints (`commands/work.py:224-259`,
+  which currently only show `kcia work answer "<your answer>"`) that `--file`/`--stdin` exist for
+  long answers — small doc-string/help text change only, not a behavior change to those functions.
+
+**2. Whitespace handling (narrowed from the original draft):**
+
+- New `normalize_text(text: str) -> str` in a new `cli/src/kcia/text.py`. Behavior: strip only
+  leading/trailing whitespace (`text.strip()`), and normalize line endings (`\r\n`/`\r` → `\n`) for
+  text that may come from a file. **Internal whitespace, blank lines, and Markdown structure are
+  left untouched** — no collapsing of newlines or repeated spaces, since that would corrupt
+  multi-line input like the spec pasted above.
+- Applied to all three sources (positional argv text, `--file` contents, `--stdin` contents) at the
+  same point: `state["work_text"]` in `WorkGroup.resolve_command` (`commands/work.py:95`), and the
+  joined text in `work_answer` (`commands/work.py:672`).
+- Empty-after-strip guard unchanged from the original draft: falsy `work_text` continues to mean
+  "resume active session"; `work_answer` errors out (exit 1) rather than recording an empty
+  injection, if the file/stdin content is empty or whitespace-only.
 
 ### Files touched
 
 - `cli/src/kcia/text.py` (new): `normalize_text`.
-- `cli/src/kcia/commands/work.py`: import and apply `normalize_text` at the two entry points above,
-  plus the empty-after-normalization guard in `work_answer`.
-- `tests/`: add unit coverage for `normalize_text` (whitespace collapsing, strip, empty-after-strip)
-  and for `work answer` rejecting a whitespace-only answer. Exact test file location to be decided
-  during implementation (likely alongside existing `tests/test_cli_help.py`-style CLI tests / a new
-  `tests/test_text.py`).
+- `cli/src/kcia/commands/work.py`:
+  - `--file`/`-f` and `--stdin` options on `work()` and `work_answer()`.
+  - mutual-exclusion validation between positional text / `--file` / `--stdin`.
+  - apply `normalize_text` at the two existing entry points.
+  - help text updates in `_render_blocked`/`_render_approval_gate`.
+- `tests/`: `normalize_text` unit tests (strip, line-ending normalization, empty-after-strip);
+  CLI tests for `kcia work --file`, `kcia work answer --file`, stdin variants, and the
+  mutual-exclusion error. Exact file(s) TBD during implementation (likely a new `tests/test_text.py`
+  plus additions to the existing `work` command test file).
 
 ## Open questions
 
-None — clarified with the user: this is a kcia-only whitespace-normalization request for the
-`work`/`answer` free-text arguments, unrelated to the checklist/photoUrl topic and unrelated to the
-zsh glob error (confirmed shell-side).
+None currently. Confirm before implementation:
+- Flag names `--file`/`-f` and `--stdin` are assumed; say so in this file if you'd prefer different
+  names (e.g. `--from-file`, `-`  as a positional sentinel for stdin instead of a flag).
 
 ## Version bump
 
-**patch** (`0.16.3` → `0.16.4`): internal input-hygiene fix, no new capability, no breaking change.
+**minor** (`0.16.4` → `0.17.0`): `--file`/`--stdin` are new user-facing capabilities on
+`work`/`answer`, not just an internal hygiene fix. The earlier patch (`0.16.4`) collapsed internal
+whitespace; this release replaces that with strip + line-ending normalization so Markdown specs
+stay intact.
