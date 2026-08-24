@@ -316,6 +316,34 @@ the Flutter profile bundles, and the prompt gets smaller.
 kcia work
 ```
 
+### Local skills (`kcia skill`)
+
+Project skills live in a personal catalog at `.ai/skills.yaml` (gitignored like
+`.ai/manifest.yaml`). Register a skill once per profile namespace, then run it
+any time — independent of waves and `kcia work`.
+
+```bash
+# Register (namespace required)
+kcia skill --backend --path .cursor/skills/deploy_staging_services --deploy
+kcia skill --backend deploy_staging_services --deploy
+
+# List
+kcia skill --backend
+kcia skill
+
+# Run (profile flag required when the same shortcut exists on multiple namespaces)
+kcia skill --backend --deploy
+kcia skill --mote_kill                 # when that shortcut is unique
+
+# Remove
+kcia skill --backend --deploy --remove
+```
+
+Extra words after the shortcut are forwarded into the builder prompt
+(`kcia skill --backend --deploy -- production`). A successful run prints builder
+stdout and ends with `SKILL_OK:`; `BLOCKED:` exits `2`. This is not a wave — it
+does not appear in `kcia work list`.
+
 **Variants**
 
 | Command | What it does |

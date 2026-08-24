@@ -57,6 +57,7 @@ workflows:
   - workflows/bugfix.md
   - workflows/refactor.md
   - workflows/pr-review.md
+  - workflows/skills.md
 rules:
   forbid_business_logic_in_handlers: true
   require_structured_logging: true

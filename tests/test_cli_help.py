@@ -21,5 +21,6 @@ def test_help_lists_commands() -> None:
         "branch",
         "auth",
         "mcp",
+        "skill",
     ]:
         assert command in output

@@ -11,6 +11,7 @@ from kcia.commands.init import init
 from kcia.commands.mcp import app as mcp_app
 from kcia.commands.profile import app as profile_app
 from kcia.commands.session import app as session_app
+from kcia.commands.skill import app as skill_app
 from kcia.commands.sync import sync
 from kcia.commands.work import app as work_app
 
@@ -39,6 +40,7 @@ app.add_typer(session_app, name="session")
 app.add_typer(auth_app, name="auth")
 app.add_typer(branch_app, name="branch")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(skill_app, name="skill")
 
 app.command(
     "done",

@@ -46,6 +46,7 @@ GITIGNORE_ENTRIES = (
     ".ai/generated/",
     ".ai/context/",
     ".ai/manifest.yaml",
+    ".ai/skills.yaml",
     ".ai/mcp.yaml",
     # Local repo-scoped profiles: shared via `kcia profile add`, not via git.
     ".ai/profiles/",
