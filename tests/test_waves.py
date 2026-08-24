@@ -62,6 +62,26 @@ def test_work_creates_session_json(git_repo: Path, monkeypatch) -> None:
     assert data["task"]["prompt"] == "arregla el overflow"
 
 
+def test_work_normalizes_prompt_whitespace(git_repo: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repo)
+    with patch("kcia.commands.work._execute"):
+        result = runner.invoke(app, ["work", "  fix   the overflow  "])
+    assert result.exit_code == 0, result.stdout
+    data = json.loads(session_path(git_repo).read_text(encoding="utf-8"))
+    assert data["task"]["prompt"] == "fix the overflow"
+    assert data["task"]["title"] == "fix the overflow"
+
+
+def test_work_whitespace_only_text_continues_active_session(
+    git_repo: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(git_repo)
+    result = runner.invoke(app, ["work", "  \t  "])
+    assert result.exit_code == 1, result.stdout
+    assert "No active task" in result.stdout
+    assert not session_path(git_repo).is_file()
+
+
 def test_work_list_shows_five_waves(git_repo: Path) -> None:
     Session.create(git_repo, text="demo task", mode="prompt")
     result = subprocess.run(

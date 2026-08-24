@@ -89,6 +89,34 @@ def test_task_answer_no_retry_preserves_record_only(git_repo: Path, monkeypatch)
     assert session.data["injections"] == ["The profile screen."]
 
 
+def test_task_answer_rejects_whitespace_only_text(git_repo: Path, monkeypatch) -> None:
+    Session.create(git_repo, text="fix the overflow", mode="prompt")
+    monkeypatch.chdir(git_repo)
+
+    with patch("kcia.commands.work.retry_wave") as mock_retry:
+        result = runner.invoke(app, ["work", "answer", "  \t\n  "])
+
+    assert result.exit_code == 1, result.stdout
+    mock_retry.assert_not_called()
+    assert "Answer text is empty." in result.stdout
+    session = Session.load(git_repo)
+    assert session.data["injections"] == []
+
+
+def test_task_answer_normalizes_whitespace(git_repo: Path, monkeypatch) -> None:
+    Session.create(git_repo, text="fix the overflow", mode="prompt")
+    monkeypatch.chdir(git_repo)
+
+    result = runner.invoke(
+        app,
+        ["work", "answer", "--no-retry", "  Extra   context\n"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    session = Session.load(git_repo)
+    assert session.data["injections"] == ["Extra context"]
+
+
 def test_work_retry_wires_progress_into_retry_wave(git_repo: Path, monkeypatch) -> None:
     Session.create(git_repo, text="fix the overflow", mode="prompt")
     monkeypatch.chdir(git_repo)

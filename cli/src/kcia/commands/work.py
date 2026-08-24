@@ -22,6 +22,7 @@ from kcia.integrations.tickets import (
     fetch_ticket,
 )
 from kcia.paths import find_repo_root
+from kcia.text import normalize_text
 from kcia.usage import collect_usage, format_duration, format_tokens
 from kcia.waves.definitions import get_wave, load_waves
 from kcia.waves.progress import MultiWaveProgress, WaveProgress
@@ -92,7 +93,7 @@ class WorkGroup(TyperGroup):
             while index < len(args) and not args[index].startswith("-"):
                 text_parts.append(args[index])
                 index += 1
-            state["work_text"] = " ".join(text_parts)
+            state["work_text"] = normalize_text(" ".join(text_parts)) or None
             state["_work_option_args"] = args[index:]
             args = args[index:]
             ctx._protected_args = []
@@ -669,7 +670,11 @@ def work_answer(
     except FileNotFoundError as exc:
         typer.echo(str(exc))
         raise typer.Exit(code=1) from exc
-    session.add_injection(" ".join(text))
+    normalized = normalize_text(" ".join(text))
+    if not normalized:
+        typer.echo("Answer text is empty.")
+        raise typer.Exit(code=1)
+    session.add_injection(normalized)
     if no_retry:
         typer.echo("Injection recorded.")
         return
