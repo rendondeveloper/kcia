@@ -13,6 +13,8 @@ from typer.testing import CliRunner
 
 from kcia.main import app
 from kcia.skills.catalog import load_catalog, skills_path
+from kcia.skills.result import SkillRunOutcome
+from kcia.skills.runner import build_skill_prompt
 from kcia.waves.session import Session, session_path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,9 +159,12 @@ def test_run_skill_ok_exit_zero(melos_repo: Path, monkeypatch) -> None:
 
     captured: dict[str, object] = {}
 
-    def fake_run(*args, **_kwargs) -> tuple[int, str]:
+    def fake_run(*args, **_kwargs) -> SkillRunOutcome:
         captured["extra_argv"] = args[4] if len(args) > 4 else _kwargs.get("extra_argv")
-        return 0, "Done.\nSKILL_OK: deployed\n"
+        return SkillRunOutcome(
+            exit_code=0,
+            output_text="Done.\nSKILL_OK: deployed\n",
+        )
 
     monkeypatch.setattr("kcia.commands.skill.run_cataloged_skill", fake_run)
 
@@ -178,7 +183,11 @@ def test_run_blocked_exit_two(melos_repo: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(
         "kcia.commands.skill.run_cataloged_skill",
-        lambda *args, **kwargs: (2, "BLOCKED: need credentials\n"),
+        lambda *args, **kwargs: SkillRunOutcome(
+            exit_code=2,
+            output_text="BLOCKED: need credentials\n",
+            blocked_reason="need credentials",
+        ),
     )
 
     result = runner.invoke(app, ["skill", "--backend", "--deploy"])
@@ -194,11 +203,16 @@ def test_run_missing_skill_ok_exit_one(melos_repo: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(
         "kcia.commands.skill.run_cataloged_skill",
-        lambda *args, **kwargs: (1, "I talked but did not confirm.\n"),
+        lambda *args, **kwargs: SkillRunOutcome(
+            exit_code=1,
+            output_text="I talked but did not confirm.\n",
+            missing_skill_ok=True,
+        ),
     )
 
     result = runner.invoke(app, ["skill", "--backend", "--deploy"])
     assert result.exit_code == 1, result.output
+    assert "SKILL_OK" in result.output
 
 
 def test_unique_shortcut_without_profile(melos_repo: Path, monkeypatch) -> None:
@@ -209,7 +223,7 @@ def test_unique_shortcut_without_profile(melos_repo: Path, monkeypatch) -> None:
 
     def fake_run(repo, namespace, shortcut, *_args, **_kwargs):
         calls.append((namespace, shortcut))
-        return 0, "SKILL_OK: ok\n"
+        return SkillRunOutcome(exit_code=0, output_text="SKILL_OK: ok\n")
 
     monkeypatch.setattr("kcia.commands.skill.run_cataloged_skill", fake_run)
 
@@ -286,7 +300,7 @@ def test_run_calls_builder_with_progress(melos_repo: Path, monkeypatch) -> None:
         captured["shortcut"] = shortcut
         captured["skill_path"] = skill_path
         captured["extra_argv"] = extra_argv
-        return 0, "SKILL_OK: ok\n"
+        return SkillRunOutcome(exit_code=0, output_text="SKILL_OK: ok\n")
 
     monkeypatch.setattr("kcia.commands.skill.run_cataloged_skill", fake_run)
     monkeypatch.setattr("kcia.commands.skill.check_agents_ready", lambda _repo: [])
@@ -296,3 +310,87 @@ def test_run_calls_builder_with_progress(melos_repo: Path, monkeypatch) -> None:
     assert captured["namespace"] == "backend"
     assert captured["shortcut"] == "deploy"
     assert captured["extra_argv"] == ["staging"]
+
+
+def test_build_skill_prompt_requires_complete_result(melos_repo: Path) -> None:
+    skill_file = _write_skill(melos_repo, "deploy_staging_services")
+    prompt = build_skill_prompt(skill_file, melos_repo, ["production"])
+    assert "short summary" not in prompt.lower()
+    assert "concrete names" in prompt.lower()
+    assert "SKILL_OK:" in prompt
+    assert "BLOCKED:" in prompt
+
+
+def test_format_skill_run_messages_empty_output() -> None:
+    from kcia.skills.result import format_skill_run_messages
+
+    outcome = SkillRunOutcome(exit_code=1, output_text="", empty_output=True)
+    lines = format_skill_run_messages("backend", "deploy", outcome)
+    assert lines == ["skill:backend/deploy produced no output."]
+
+
+def test_format_skill_run_messages_missing_skill_ok() -> None:
+    from kcia.skills.result import format_skill_run_messages
+
+    outcome = SkillRunOutcome(
+        exit_code=1,
+        output_text="Deployed something vague.\n",
+        missing_skill_ok=True,
+    )
+    lines = format_skill_run_messages("backend", "deploy", outcome)
+    assert "Deployed something vague." in lines[0]
+    assert "did not emit SKILL_OK:" in lines[1]
+
+
+def test_run_prints_concrete_skill_ok_line(melos_repo: Path, monkeypatch) -> None:
+    skill_file = _write_skill(melos_repo, "deploy_staging_services")
+    runner.invoke(
+        app,
+        ["skill", "--backend", "--path", str(skill_file.parent), "--deploy"],
+    )
+
+    monkeypatch.setattr(
+        "kcia.commands.skill.run_cataloged_skill",
+        lambda *args, **kwargs: SkillRunOutcome(
+            exit_code=0,
+            output_text=(
+                "Deployed catalog-route-v2 and route-route-v2 to dev.\n"
+                "SKILL_OK: deployed catalog-route-v2, route-route-v2 to dev\n"
+            ),
+        ),
+    )
+
+    result = runner.invoke(app, ["skill", "--backend", "--deploy"])
+    assert result.exit_code == 0, result.output
+    assert "catalog-route-v2" in result.output
+    assert "SKILL_OK:" in result.output
+
+
+def test_run_cataloged_skill_marks_progress_failed(melos_repo: Path, monkeypatch) -> None:
+    from kcia.providers.base import RunResult
+    from kcia.skills.runner import run_cataloged_skill
+    from kcia.waves.progress import WaveProgress
+
+    skill_file = _write_skill(melos_repo, "deploy_staging_services")
+    finished: dict[str, bool] = {}
+    original_finish = WaveProgress.finish
+
+    def track_finish(self, *, failed: bool = False) -> None:
+        finished["failed"] = failed
+        original_finish(self, failed=failed)
+
+    monkeypatch.setattr(WaveProgress, "finish", track_finish)
+    monkeypatch.setattr(
+        "kcia.skills.runner.call_provider",
+        lambda *args, **kwargs: RunResult(output_text="", exit_code=0),
+    )
+
+    outcome = run_cataloged_skill(
+        melos_repo,
+        "backend",
+        "deploy",
+        skill_file,
+        [],
+    )
+    assert outcome.exit_code == 1
+    assert finished.get("failed") is True

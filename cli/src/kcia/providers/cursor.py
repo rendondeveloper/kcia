@@ -9,10 +9,14 @@ from pathlib import Path
 
 from kcia.providers.base import AuthStatus, ProviderCapabilities, RunRequest
 from kcia.providers.events import (
+    FileRead,
+    FileWrite,
     ProviderError,
     StreamEvent,
     StreamState,
     TextDelta,
+    ToolCallEnd,
+    ToolCallStart,
     TurnEnd,
     UsageUpdate,
 )
@@ -143,7 +147,19 @@ class CursorAdapter:
         events: list[StreamEvent] = []
         event_type = payload.get("type")
 
-        if event_type == "text_delta":
+        if event_type == "system" and payload.get("subtype") == "init":
+            session_id = payload.get("session_id")
+            if isinstance(session_id, str):
+                state.session_id = session_id
+
+        elif event_type == "content_block_delta":
+            delta = payload.get("delta") or {}
+            if delta.get("type") == "text_delta":
+                text = delta.get("text", "")
+                if text:
+                    events.append(TextDelta(text=text))
+
+        elif event_type == "text_delta":
             text = payload.get("text", "")
             if text:
                 events.append(TextDelta(text=text))
@@ -152,6 +168,34 @@ class CursorAdapter:
             text = payload.get("content", "")
             if text:
                 events.append(TextDelta(text=text))
+
+        elif event_type == "assistant":
+            message = payload.get("message") or {}
+            for block in message.get("content", []):
+                if block.get("type") == "text":
+                    text = block.get("text", "")
+                    if text:
+                        events.append(TextDelta(text=text))
+
+        elif event_type == "tool_use":
+            state.tool_calls += 1
+            name = str(payload.get("name", "unknown"))
+            preview = json.dumps(payload.get("input", {}))[:200]
+            events.append(ToolCallStart(name=name, input_preview=preview))
+
+        elif event_type == "tool_result":
+            name = str(payload.get("name", "unknown"))
+            ok = not payload.get("is_error", False)
+            events.append(ToolCallEnd(name=name, ok=ok))
+            tool_input = payload.get("tool_input") or {}
+            path = tool_input.get("file_path") or tool_input.get("path")
+            if isinstance(path, str):
+                if name in {"Read", "Glob", "Grep"}:
+                    state.files_read.add(path)
+                    events.append(FileRead(path=path))
+                elif name in {"Edit", "Write", "NotebookEdit"}:
+                    state.files_written.add(path)
+                    events.append(FileWrite(path=path))
 
         elif event_type == "usage":
             input_tokens = int(payload.get("input_tokens", 0) or 0)
@@ -170,6 +214,26 @@ class CursorAdapter:
 
         elif event_type in {"end", "done"}:
             final = payload.get("result") or payload.get("text")
+            if isinstance(final, str):
+                state.final_text = final
+                events.append(TurnEnd(final_text=final))
+
+        elif event_type == "result":
+            usage = payload.get("usage") or {}
+            input_tokens = int(usage.get("input_tokens", 0) or 0)
+            output_tokens = int(usage.get("output_tokens", 0) or 0)
+            cached = int(usage.get("cache_read_input_tokens", 0) or usage.get("cached_tokens", 0) or 0)
+            state.input_tokens = input_tokens
+            state.output_tokens = output_tokens
+            state.cached_tokens = cached
+            events.append(
+                UsageUpdate(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cached=cached,
+                )
+            )
+            final = payload.get("result")
             if isinstance(final, str):
                 state.final_text = final
                 events.append(TurnEnd(final_text=final))

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
@@ -12,16 +11,9 @@ from kcia.providers.base import RunRequest
 from kcia.providers.catalog import load_catalog as load_provider_catalog
 from kcia.providers.registry import get_adapter
 from kcia.providers.runner import call_provider, run_provider
-from kcia.skills.constants import SKILL_OK_MARKER
-from kcia.waves.blocked import detect_blocked
+from kcia.skills.result import evaluate_skill_run, SkillRunOutcome
 from kcia.waves.progress import WaveProgress
 from kcia.waves.session import runs_dir
-
-
-def detect_skill_ok(output: str) -> bool:
-    if not output:
-        return False
-    return bool(re.search(r"SKILL_OK\s*:", output, re.IGNORECASE))
 
 
 def build_skill_prompt(
@@ -41,9 +33,15 @@ def build_skill_prompt(
         "--- SKILL FILE ---\n"
         f"{skill_text}\n"
         "--- END SKILL FILE ---\n\n"
-        "When finished, end your response with exactly one marker line:\n"
-        "- `SKILL_OK: <short summary>` if you completed the skill successfully\n"
+        "When finished, write a complete user-facing report of what the skill did. "
+        "Include concrete names of resources that changed (deployed services, files, "
+        "URLs), the target (project, environment, alias), and anything skipped or "
+        "failed. Vague summaries like \"deployed successfully\" are not enough.\n\n"
+        "End with exactly one marker line:\n"
+        "- `SKILL_OK: <compact facts with the same concrete names>` on success\n"
         "- `BLOCKED: <reason>` if you cannot proceed without more input\n"
+        "The `SKILL_OK:` line must repeat the key names (for example "
+        "`SKILL_OK: deployed catalog-route-v2, route-route-v2 to dev`).\n"
         "Do not emit both markers."
     )
 
@@ -72,8 +70,8 @@ def run_cataloged_skill(
     *,
     provider_runner: Callable[..., object] | None = None,
     should_cancel: Callable[[], bool] | None = None,
-) -> tuple[int, str]:
-    """Run the skill and return `(exit_code, stdout_text)`."""
+) -> SkillRunOutcome:
+    """Run the skill and return a structured outcome."""
     agents = resolve_agents(repo_root)
     builder = agents.get("builder")
     if builder is None:
@@ -118,8 +116,9 @@ def run_cataloged_skill(
         periodic_updates=True,
     )
     runner = provider_runner or run_provider
-
-    with progress:
+    result: object | None = None
+    progress.start()
+    try:
         result = call_provider(
             runner,
             adapter,
@@ -127,19 +126,11 @@ def run_cataloged_skill(
             progress.handle,
             should_cancel,
         )
+    finally:
+        output_text = getattr(result, "output_text", "") or "" if result is not None else ""
+        provider_exit = int(getattr(result, "exit_code", 0) or 0) if result is not None else 1
+        outcome = evaluate_skill_run(output_text, provider_exit)
+        progress.finish(failed=outcome.exit_code != 0)
 
-    output_text = getattr(result, "output_text", "") or ""
-    exit_code = int(getattr(result, "exit_code", 0) or 0)
-    _write_skill_run_files(repo_root, run_id, prompt, output_text)
-
-    blocked = detect_blocked(output_text)
-    if blocked:
-        return 2, output_text
-
-    if exit_code != 0:
-        return 1, output_text
-
-    if not detect_skill_ok(output_text):
-        return 1, output_text
-
-    return 0, output_text
+    _write_skill_run_files(repo_root, run_id, prompt, outcome.output_text)
+    return outcome

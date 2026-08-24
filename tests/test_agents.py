@@ -78,6 +78,34 @@ def test_claude_build_command_disallows_edits() -> None:
     assert cmd[cmd.index("--permission-mode") + 1] == "default"
 
 
+def test_cursor_parse_stream_line_fixture() -> None:
+    from pathlib import Path
+
+    from kcia.providers.cursor import CursorAdapter
+    from kcia.providers.events import (
+        FileRead,
+        StreamState,
+        TextDelta,
+        ToolCallStart,
+        TurnEnd,
+        UsageUpdate,
+    )
+
+    fixture = Path(__file__).parent / "fixtures" / "providers" / "cursor_stream.jsonl"
+    adapter = CursorAdapter(load_catalog()["cursor"])
+    state = StreamState()
+    events = []
+    for line in fixture.read_text(encoding="utf-8").splitlines():
+        events.extend(adapter.parse_stream_line(line, state))
+
+    assert any(isinstance(event, TextDelta) for event in events)
+    assert any(isinstance(event, ToolCallStart) for event in events)
+    assert any(isinstance(event, UsageUpdate) for event in events)
+    assert any(isinstance(event, TurnEnd) for event in events)
+    assert state.tool_calls == 1
+    assert "catalog-route-v2" in state.final_text or ""
+
+
 def test_claude_parse_stream_line_fixture() -> None:
     adapter = ClaudeAdapter(load_catalog()["claude"])
     state = StreamState()

@@ -1,0 +1,4 @@
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Deployed catalog-route-v2."}]}}
+{"type": "tool_use", "name": "Shell", "input": {"command": "firebase deploy"}}
+{"type": "tool_result", "name": "Shell", "tool_input": {"command": "firebase deploy"}, "is_error": false}
+{"type": "result", "result": "Deployed catalog-route-v2, route-route-v2 to dev.\nSKILL_OK: deployed catalog-route-v2, route-route-v2 to dev", "usage": {"input_tokens": 1200, "output_tokens": 80, "cache_read_input_tokens": 0}}

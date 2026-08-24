@@ -30,6 +30,7 @@ from kcia.skills.finder import (
 )
 from kcia.skills.parser import ParsedSkillArgs, SkillAction, parse_skill_argv
 from kcia.skills.runner import run_cataloged_skill
+from kcia.skills.result import format_skill_run_messages
 from kcia.skills.schema import SkillEntry
 from kcia.waves.progress import StepProgress
 from kcia.waves.runner import check_agents_ready
@@ -310,7 +311,7 @@ def _run_skill(repo: Path, parsed: ParsedSkillArgs) -> None:
         raise typer.Exit(code=1)
 
     with interruptible() as cancel:
-        exit_code, output = run_cataloged_skill(
+        outcome = run_cataloged_skill(
             repo,
             namespace,
             shortcut,
@@ -319,9 +320,9 @@ def _run_skill(repo: Path, parsed: ParsedSkillArgs) -> None:
             should_cancel=cancel,
         )
 
-    if output:
-        typer.echo(output)
-    raise typer.Exit(code=exit_code)
+    for line in format_skill_run_messages(namespace, shortcut, outcome):
+        typer.echo(line)
+    raise typer.Exit(code=outcome.exit_code)
 
 
 def _dispatch(parsed: ParsedSkillArgs, repo: Path) -> None:

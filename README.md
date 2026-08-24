@@ -340,9 +340,10 @@ kcia skill --backend --deploy --remove
 ```
 
 Extra words after the shortcut are forwarded into the builder prompt
-(`kcia skill --backend --deploy -- production`). A successful run prints builder
-stdout and ends with `SKILL_OK:`; `BLOCKED:` exits `2`. This is not a wave — it
-does not appear in `kcia work list`.
+(`kcia skill --backend --deploy -- production`). A successful run prints the full
+builder report (including concrete names on the `SKILL_OK:` line), not only the
+spinner line. `BLOCKED:` exits `2`. This is not a wave — it does not appear in
+`kcia work list`.
 
 **Variants**
 
