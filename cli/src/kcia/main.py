@@ -1,6 +1,7 @@
 import typer
 
 from kcia import VERSION
+from kcia.terminal_title import set_kcia_terminal_title
 from kcia.commands.agent import app as agent_app
 from kcia.commands.ask import ask
 from kcia.commands.auth import app as auth_app
@@ -69,3 +70,4 @@ def main(
     ),
 ) -> None:
     """kcia control plane CLI."""
+    set_kcia_terminal_title()
