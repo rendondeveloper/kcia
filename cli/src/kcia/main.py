@@ -48,7 +48,10 @@ app.command(
     help="Review and write the commits that close the task; session history is saved automatically.",
 )(commit_command)
 app.command("doctor", help="Validate local setup and repository configuration.")(doctor)
-app.command("ask", help="Run a direct query without creating a task.")(ask)
+app.command(
+    "ask",
+    help="Ask the planner about this repository without creating a task.",
+)(ask)
 app.command("sync", help="Sync the control plane and re-render adapters.")(sync)
 
 

@@ -74,7 +74,13 @@ def build_prompt_with_stats(
     # problem statement at all.
     add_section("task-statement", _task_statement(session))
 
-    history_content = _related_history(session) if wave.include_history else ""
+    history_content = ""
+    if wave.include_history:
+        from kcia.history.prompt_context import related_history_for_task
+
+        task = session.task
+        task_text = task.get("prompt") or task.get("title") or ""
+        history_content = related_history_for_task(session.repo_root, task_text)
     add_section("related-history", history_content)
 
     project_context = _read_context_file(repo_root, "project.md")
@@ -272,49 +278,3 @@ def _read_context_file(repo_root: Path, name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _history_query(session: Session) -> str:
-    import re
-
-    task = session.task
-    text = task.get("prompt") or task.get("title") or ""
-    words = re.findall(r"[A-Za-z0-9]+", text)
-    return " ".join(words[:8])
-
-
-def _related_history(session: Session, *, limit: int = 3) -> str:
-    from kcia.history import index
-    from kcia.history import log as history_log
-
-    if not history_log.log_path(session.repo_root).is_file():
-        return ""
-    query = _history_query(session)
-    if not query:
-        return ""
-    try:
-        terms = query.split()
-        seen: set[str] = set()
-        hits = []
-        for term in terms:
-            for hit in index.search(session.repo_root, term, limit=limit):
-                if hit.id in seen:
-                    continue
-                seen.add(hit.id)
-                hits.append(hit)
-                if len(hits) >= limit:
-                    break
-            if len(hits) >= limit:
-                break
-    except Exception:
-        return ""
-    if not hits:
-        return ""
-    parts = ["## Related history\n"]
-    for hit in hits:
-        data = json.loads(hit.raw_json)
-        line = f"- {hit.timestamp} — {hit.title}"
-        summary = (data.get("summary") or "").strip().splitlines()
-        if summary:
-            line += f" — {summary[0][:120]}"
-        parts.append(line)
-    parts.append("")
-    return "\n".join(parts)

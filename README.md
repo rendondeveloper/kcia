@@ -310,6 +310,27 @@ kcia work "fix the overflow on the profile screen"
 `--scope` matters on a monorepo: a task that only touches the API package does not pull in
 the Flutter profile bundles, and the prompt gets smaller.
 
+### Ask the planner (`kcia ask`)
+
+Use this when you have a question about the project and do **not** want to start a task
+yet. Each turn goes to the **planner** (read-only — no file writes). The reply prints on
+stdout; progress goes to stderr like `kcia work`.
+
+```bash
+kcia ask "how does profile detection work?"
+kcia ask "and which manifest roots does packages/api use?"   # continues the conversation
+kcia ask --clear                                             # wipe the local conversation
+kcia ask --work                                              # start kcia work from the chat
+```
+
+The conversation is stored in `.ai/local/ask.json` (gitignored). Python injects project
+facts, the repo map, and related session history before the planner runs; follow-up turns
+resume the provider session when possible so the prompt stays small. Use `--file` or
+`--stdin` for long questions, same as `kcia work`.
+
+If a task is already open, `kcia ask --work` refuses — run `kcia work abort` first, or use
+`kcia work answer` to inject context into the active task instead.
+
 ### 6. Run the waves
 
 ```bash
@@ -1348,4 +1369,4 @@ Being honest about what the code does not yet do:
 | MCP | `mcp catalog/add/remove/list` — per-repo servers with per-role gating |
 | Git | `branch start/base`, `done` — git-flow branching and the confirmed commits that close a task |
 
-**Not yet implemented** — these commands exit 1: `kcia sync`, `kcia ask`, `kcia auth`.
+**Not yet implemented** — these commands exit 1: `kcia sync`, `kcia auth`.
