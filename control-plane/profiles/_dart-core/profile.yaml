@@ -44,7 +44,14 @@ rules:
   require_generated_json_serialization: true
   forbid_manual_generated_file_edits: true
   require_clean_architecture_boundaries: true
+  forbid_data_access_from_presentation: true
+  forbid_business_logic_in_data_or_presentation: true
+  require_shared_logic_outside_feature_scope: true
+  require_state_manager_rebuild_scope_covers_rendered_fields: true
+  require_boundary_case_tests_for_counters_and_thresholds: true
   require_layer_and_feature_barrels: true
+  forbid_subfolder_barrels: true
+  require_absolute_package_paths_in_barrels: true
   require_package_imports_with_show_across_boundaries: true
   require_mapper_classes_for_model_entity_mapping: true
   require_dcm_for_modified_files_when_available: true

@@ -11,6 +11,9 @@
 - All new business logic requires unit tests.
 - Changes to repositories or datasources require integration tests when applicable.
 - Don't reduce existing coverage without justification in the plan.
+- Counting/threshold logic (attempts remaining, limits, pagination edges)
+  requires explicit test cases for its edge values (0, max, max-1), not just
+  a representative middle case.
 
 ## Test data
 

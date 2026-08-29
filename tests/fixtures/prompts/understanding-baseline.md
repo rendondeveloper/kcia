@@ -276,11 +276,34 @@ Layout: monorepo. Detected 4 packages.
 
 - Prefer `freezed` over `Equatable` for immutable models.
 - JSON serialization with `json_serializable`; don't edit `*.g.dart` or `*.freezed.dart` files.
-- Use dedicated mapper classes between domain models and DTOs.
+- Use dedicated mapper classes between domain models and DTOs — see
+  `references/architecture.md` ("Mapper at the data boundary" and the
+  `feature_example` layout).
 
 ## Control flow
 
 - Always use braces in `if`, `for`, and `while`, even on a single line.
+
+## State manager consumption correctness
+
+- State-management agnostic rule: every field read inside a build/consume
+  callback must be covered by whatever mechanism the chosen approach uses to
+  decide when to rebuild or notify. A missing field there is a bug, not a
+  style preference.
+- Bloc/Cubit: list every state field the builder reads in `buildWhen` (or
+  `listenWhen` for side effects); don't compare only a subset of fields.
+- Provider: scope `Consumer`/`context.watch` to the exact model/field needed
+  (`Selector`, or a narrow `ChangeNotifier` getter) instead of watching the
+  whole model and expecting every field change to redraw.
+- Riverpod: `ref.watch` every provider whose value the widget reads; if only
+  one field of a bigger state should trigger a rebuild, watch
+  `provider.select((s) => s.field)` instead of the whole state object.
+
+## Boundary-value correctness
+
+- Counting/threshold logic (attempts remaining, limits, pagination edges)
+  must have unit tests covering the edges (0, max, max-1) before it's
+  considered done — see also `references/testing.md`.
 
 
 # Monorepo
@@ -308,7 +331,14 @@ Layout: monorepo. Detected 4 packages.
 - require_generated_json_serialization: True
 - forbid_manual_generated_file_edits: True
 - require_clean_architecture_boundaries: True
+- forbid_data_access_from_presentation: True
+- forbid_business_logic_in_data_or_presentation: True
+- require_shared_logic_outside_feature_scope: True
+- require_state_manager_rebuild_scope_covers_rendered_fields: True
+- require_boundary_case_tests_for_counters_and_thresholds: True
 - require_layer_and_feature_barrels: True
+- forbid_subfolder_barrels: True
+- require_absolute_package_paths_in_barrels: True
 - require_package_imports_with_show_across_boundaries: True
 - require_mapper_classes_for_model_entity_mapping: True
 - require_dcm_for_modified_files_when_available: True
