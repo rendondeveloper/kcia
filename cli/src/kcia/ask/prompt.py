@@ -38,6 +38,7 @@ def build_ask_prompt(
 
     if resume:
         sections["role"] = _resume_role()
+        sections["instruction"] = _instruction()
         related, seen = search_related_history(
             repo_root,
             history_query_from_text(question),
@@ -53,6 +54,7 @@ def build_ask_prompt(
     else:
         sections["role"] = _full_role()
         sections["guardrails"] = _guardrails()
+        sections["instruction"] = _instruction()
         sections["project-context"] = _read_context_file(repo_root, "project.md")
         sections["repo-map"] = _repo_map(repo_root)
         related, seen = search_related_history(
@@ -69,7 +71,6 @@ def build_ask_prompt(
         sections["active-task"] = _active_task_context(repo_root)
         sections["prior-turns"] = _prior_turns(conversation.turns)
         sections["attached-path"] = _optional_path_attachment(repo_root, question)
-        sections["instruction"] = _instruction()
         sections["question"] = _question_section(question)
 
     return _apply_budget(sections)

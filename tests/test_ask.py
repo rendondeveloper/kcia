@@ -70,6 +70,41 @@ def _log_session(repo: Path, *, title: str = "Fix layout overflow") -> log.Sessi
     return entry
 
 
+def test_ask_prompt_static_instruction_before_dynamic_sections(melos_repo: Path) -> None:
+    _log_session(melos_repo, title="Fix layout overflow")
+    prompt = build_ask_prompt(
+        melos_repo,
+        "layout overflow on profile screen",
+        AskConversation(),
+        resume=False,
+    )
+    instruction_pos = prompt.index("## Ask mode")
+    repo_map_pos = prompt.index("## Repository map")
+    history_pos = prompt.index("## Related history")
+    question_pos = prompt.index("## Question")
+    assert instruction_pos < repo_map_pos < history_pos < question_pos
+
+
+def test_ask_prompt_resume_static_instruction_before_dynamic_sections(melos_repo: Path) -> None:
+    _log_session(melos_repo, title="Fix layout overflow")
+    conversation = AskConversation(
+        turns=[],
+        provider="cursor",
+        model="composer-2.5",
+        provider_session_id="sess-1",
+    )
+    prompt = build_ask_prompt(
+        melos_repo,
+        "layout overflow follow up",
+        conversation,
+        resume=True,
+    )
+    instruction_pos = prompt.index("## Ask mode")
+    history_pos = prompt.index("## Related history")
+    question_pos = prompt.index("## Question")
+    assert instruction_pos < history_pos < question_pos
+
+
 def test_ask_prompt_includes_history_and_not_profile_references(melos_repo: Path) -> None:
     _log_session(melos_repo, title="Fix layout overflow")
     prompt = build_ask_prompt(

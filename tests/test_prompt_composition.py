@@ -54,6 +54,14 @@ def test_build_prompt_with_stats_section_names(melos_session) -> None:
     assert names[-2:] == ["wave-instruction", "output-format"]
 
 
+def test_build_prompt_static_prefix_before_dynamic_sections(melos_session) -> None:
+    prompt, _ = build_prompt_with_stats(get_wave("understanding"), melos_session)
+    profile_pos = prompt.index("## Profile bundle:")
+    task_pos = prompt.index("## Task statement")
+    repo_map_pos = prompt.index("## Repository map")
+    assert profile_pos < task_pos < repo_map_pos
+
+
 def test_understanding_excludes_architecture_reference(melos_session) -> None:
     prompt, _ = build_prompt_with_stats(get_wave("understanding"), melos_session)
     assert "Follow clean architecture" not in prompt

@@ -218,38 +218,6 @@ When information is unavailable, use one of the approved markers:
 The marker must be explicit and readable by humans.
 
 
-## Task statement
-
-arregla el overflow
-
-# Project
-
-## Summary
-melos_mono — Melos (Dart/Flutter) workspace.
-Packages: api, app_mobile, app_web, shared.
-
-## Operating Conventions
-- Keep changes small and bounded.
-- Do not mix broad refactors with feature work unless explicitly required.
-- Keep code human-readable for engineers across experience levels.
-- Use descriptive names for methods, classes, attributes, and variables.
-- Add or adjust tests for functional changes when evidence supports it.
-- Require 100% unit-test line coverage for new code before sending the PR.
-- Ask the developer before pushing or sending a PR.
-- Never force-push.
-- Treat profile commands as defaults until the repository confirms its real commands.
-
-## Repository map
-
-Layout: monorepo. Detected 4 packages.
-
-| Path | Profile | Test | Lint |
-|---|---|---|---|
-| packages/api | backend-dart | `dart test` | `dart analyze` |
-| packages/app_mobile | mobile-flutter | `flutter test` | `flutter analyze` |
-| packages/app_web | web-flutter | `flutter test` | `flutter analyze` |
-| packages/shared | backend-dart | `dart test` | `dart analyze` |
-
 ## Profile bundle: backend-dart
 
 # Dart coding standards
@@ -347,6 +315,38 @@ Layout: monorepo. Detected 4 packages.
 - forbid_single_line_control_flow: True
 - forbid_business_logic_in_handlers: True
 - require_structured_logging: True
+
+# Project
+
+## Summary
+melos_mono — Melos (Dart/Flutter) workspace.
+Packages: api, app_mobile, app_web, shared.
+
+## Operating Conventions
+- Keep changes small and bounded.
+- Do not mix broad refactors with feature work unless explicitly required.
+- Keep code human-readable for engineers across experience levels.
+- Use descriptive names for methods, classes, attributes, and variables.
+- Add or adjust tests for functional changes when evidence supports it.
+- Require 100% unit-test line coverage for new code before sending the PR.
+- Ask the developer before pushing or sending a PR.
+- Never force-push.
+- Treat profile commands as defaults until the repository confirms its real commands.
+
+## Task statement
+
+arregla el overflow
+
+## Repository map
+
+Layout: monorepo. Detected 4 packages.
+
+| Path | Profile | Test | Lint |
+|---|---|---|---|
+| packages/api | backend-dart | `dart test` | `dart analyze` |
+| packages/app_mobile | mobile-flutter | `flutter test` | `flutter analyze` |
+| packages/app_web | web-flutter | `flutter test` | `flutter analyze` |
+| packages/shared | backend-dart | `dart test` | `dart analyze` |
 
 ## If you cannot proceed
 
