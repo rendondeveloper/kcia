@@ -27,7 +27,9 @@ def test_total_task_input_is_below_target(melos_session) -> None:
     # 15035 -> 16719: canonical feature layout, barrel topology, and mapper
     # snippets added to architecture.md (analysis wave) plus a short coding
     # cross-ref.
-    assert total <= 16719
+    # 16719 -> 16773: validation.md requires zero analyzer warnings (analysis +
+    # implementation waves).
+    assert total <= 16773
     # Layout content exceeds phase-0; absolute cap until a trim pass elsewhere.
-    assert total <= PHASE0_TASK_TOKENS * 1.13
+    assert total <= PHASE0_TASK_TOKENS * 1.131
 
