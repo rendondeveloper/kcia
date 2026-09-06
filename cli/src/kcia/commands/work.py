@@ -27,6 +27,7 @@ from kcia.text import normalize_text
 from kcia.usage import collect_usage, format_duration, format_tokens
 from kcia.waves.definitions import get_wave, load_waves
 from kcia.waves.progress import MultiWaveProgress, WaveProgress
+from kcia.waves.plan_execution import ExecutionBlockError
 from kcia.waves.runner import (
     ApprovalRequired,
     approval_document,
@@ -436,6 +437,14 @@ def _render_cancelled(wave_id: str) -> None:
     typer.echo("It is pending again — `kcia work` starts it from the top.")
 
 
+def _exit_on_execution_block(
+    exc: ExecutionBlockError, reporter: "_ProgressReporter"
+) -> None:
+    reporter.finish()
+    typer.echo(str(exc))
+    raise typer.Exit(code=1) from exc
+
+
 def _retry_with_progress(session: Session, wave_id: str) -> None:
     """Re-run a wave with the same live status line as `kcia work`."""
     reporter = _ProgressReporter(enabled=True, periodic_updates=True)
@@ -460,6 +469,8 @@ def _retry_with_progress(session: Session, wave_id: str) -> None:
             reporter.finish(failed=True)
             _render_cancelled(stopped.wave.id)
             raise typer.Exit(code=130) from stopped
+        except ExecutionBlockError as exc:
+            _exit_on_execution_block(exc, reporter)
         reporter.finish(failed=result.status != "completed")
         report_retry_result(wave_id, result)
 
@@ -498,6 +509,8 @@ def _run_loop(
             reporter.finish(failed=True)
             _render_cancelled(stopped.wave.id)
             raise typer.Exit(code=130) from stopped
+        except ExecutionBlockError as exc:
+            _exit_on_execution_block(exc, reporter)
         reporter.finish(failed=result.status != "completed")
         if result.status == "completed":
             if result.output_path:
@@ -544,6 +557,8 @@ def _run_loop(
             reporter.finish(failed=True)
             _render_cancelled(stopped.wave.id)
             raise typer.Exit(code=130) from stopped
+        except ExecutionBlockError as exc:
+            _exit_on_execution_block(exc, reporter)
         reporter.finish(failed=result.status != "completed")
         if result.status != "completed":
             typer.echo(f"Wave `{pending.id}` failed: {result.error}")

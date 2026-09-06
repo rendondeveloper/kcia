@@ -50,6 +50,38 @@ def test_classify_input_prompt_mode_without_jira() -> None:
     assert classify_input("arregla el overflow", {}) == "prompt"
 
 
+def test_classify_input_handles_non_dict_integrations() -> None:
+    list_integrations = {
+        "integrations": [{"path": "docs/jira.md", "description": "Jira setup"}]
+    }
+    assert classify_input("IP-116", list_integrations) == "prompt"
+    assert classify_input("fix the overflow", list_integrations) == "prompt"
+
+    assert classify_input("IP-116", {"integrations": "jira"}) == "prompt"
+    assert classify_input("IP-116", {"integrations": {"jira": ["enabled"]}}) == "prompt"
+
+
+def test_work_reports_execution_block_error_cleanly(git_repo: Path, monkeypatch) -> None:
+    from kcia.waves.plan_execution import ExecutionBlockError
+
+    monkeypatch.chdir(git_repo)
+    Session.create(git_repo, text="implement orders", mode="prompt")
+
+    message = "Overlapping execution roots for 'mobile-flutter' and 'backend-dart'"
+    with (
+        patch("kcia.commands.work.check_agents_ready", return_value=[]),
+        patch(
+            "kcia.commands.work.run_wave",
+            side_effect=ExecutionBlockError(message),
+        ),
+    ):
+        result = runner.invoke(app, ["work"])
+
+    assert result.exit_code == 1, result.stdout
+    assert message in result.stdout
+    assert "Traceback" not in result.stdout
+
+
 def test_work_creates_session_json(git_repo: Path, monkeypatch) -> None:
     monkeypatch.chdir(git_repo)
     with patch("kcia.commands.work._execute"):

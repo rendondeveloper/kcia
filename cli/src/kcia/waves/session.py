@@ -76,7 +76,11 @@ def classify_input(
 
     manifest = manifest or {}
     integrations = manifest.get("integrations") or {}
+    if not isinstance(integrations, dict):
+        integrations = {}
     jira = integrations.get("jira") or {}
+    if not isinstance(jira, dict):
+        jira = {}
     # Enabling the Atlassian MCP is a clear enough statement of intent on its own;
     # requiring a manifest edit as well meant `kcia work IP-116` silently
     # became a prompt whose text happened to be an issue key.
