@@ -141,7 +141,12 @@ def validate_disjoint_roots(executions: list[ProfileExecution]) -> None:
 
     This is intentionally strict and only supports common manifest patterns
     ending with `/**` (or `.` / `**` which are treated as whole-repo).
+    With fewer than two executions there is nothing to compare, so whole-repo
+    roots such as `**` / `.` are allowed without proving a prefix.
     """
+    if len(executions) < 2:
+        return
+
     roots_by_profile: dict[str, list[str]] = {}
     for exec_entry in executions:
         prefixes: list[str] = []

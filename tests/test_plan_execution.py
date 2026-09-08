@@ -151,3 +151,21 @@ def test_validate_disjoint_roots_rejects_overlapping_prefixes() -> None:
             ]
         )
 
+
+def test_validate_disjoint_roots_allows_single_profile_whole_repo_star() -> None:
+    validate_disjoint_roots([ProfileExecution("mobile-flutter", roots=["**"])])
+
+
+def test_validate_disjoint_roots_allows_single_profile_whole_repo_dot() -> None:
+    validate_disjoint_roots([ProfileExecution("mobile-flutter", roots=["."])])
+
+
+def test_validate_disjoint_roots_rejects_unprovable_root_with_multiple_profiles() -> None:
+    with pytest.raises(ExecutionBlockError, match="Cannot validate disjoint roots"):
+        validate_disjoint_roots(
+            [
+                ProfileExecution("a", roots=["**"]),
+                ProfileExecution("b", roots=["packages/api/**"]),
+            ]
+        )
+
