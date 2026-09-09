@@ -164,6 +164,9 @@ kcia agent show
 # Local models via Ollama — any tag you have pulled works; no catalog edit required.
 kcia agent set planner ollama --model qwen3:14b
 kcia agent set builder ollama --model devstral-small-2:24b
+
+# Lighter builder, when 24B does not fit alongside the planner:
+kcia agent set builder ollama --model qwen2.5-coder:14b
 ```
 
 Preferences are stored in `~/.config/kcia/config.yaml` and apply to every project unless
@@ -172,11 +175,25 @@ overridden per repo.
 Note that **Cursor uses its own model ids**, not Anthropic's: `composer-2.5`,
 `claude-sonnet-5-thinking-high`, `auto`, and so on — plain `claude-sonnet-5` is not one of
 them. `auto` is Cursor's default and lets it pick per request. **Ollama** uses the tag
-exactly as `ollama list` shows it (`qwen3:14b`, `devstral-small-2:24b`, …). The catalog
-lists documented defaults and suggested `num_ctx` values; with `model_source: live` any
-pulled tag is accepted. For hosted providers the catalog is curated by hand, so
-`kcia agent models --live` compares it against the installed CLI (`cursor-agent
---list-models`, `GET /api/tags` for Ollama) and exits non-zero on drift.
+exactly as `ollama list` shows it (`qwen3:14b`, `qwen2.5-coder:14b`,
+`devstral-small-2:24b`, …). The catalog lists documented defaults and suggested `num_ctx`
+values; with `model_source: live` any pulled tag is accepted. For hosted providers the
+catalog is curated by hand, so `kcia agent models --live` compares it against the installed
+CLI (`cursor-agent --list-models`, `GET /api/tags` for Ollama) and exits non-zero on drift.
+
+**Which local model for which role.** The catalog documents three tags; the roles differ in
+what they need, so they are not interchangeable:
+
+| Tag | Size | Role | Why |
+|---|---|---|---|
+| `qwen3:14b` | 9.3 GB | planner | Reasoning-oriented; `effort` maps to Ollama's `think`, which the planner waves benefit from and the builder does not. |
+| `devstral-small-2:24b` | 15 GB | builder | Trained for agentic coding, so it is the most reliable of the three at multi-step tool calling — the thing kcia's in-process loop leans on hardest. |
+| `qwen2.5-coder:14b` | 9.0 GB | builder (lighter) | Strong code model at 40% less memory than the 24B. Pick it when the planner and builder must be resident at once, or when the 24B swaps on your machine. Expect weaker tool-call discipline than `devstral`; it is a memory trade, not a free win. |
+
+All three are catalogued with `num_ctx: 32768`. That is a deliberate ceiling, not each
+model's maximum: the wave budget (`max_prompt_tokens: 120000`) assumes a hosted context
+window, and a local KV cache that large is what turns a 15 GB model into a swapping one.
+Raise it per model in `control-plane/providers/catalog.yaml` if you have the RAM.
 
 #### Per-project models
 

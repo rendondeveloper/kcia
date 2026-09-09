@@ -55,5 +55,6 @@ providers:
     model_source: live
     models:
       - { id: qwen3:14b, tier: balanced, best_for: [planning, analysis], num_ctx: 32768 }
+      - { id: qwen2.5-coder:14b, tier: balanced, best_for: [implementation, refactor], num_ctx: 32768 }
       - { id: devstral-small-2:24b, tier: max, best_for: [implementation, refactor], num_ctx: 32768 }
     default_model: devstral-small-2:24b
