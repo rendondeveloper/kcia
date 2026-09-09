@@ -10,6 +10,7 @@ from kcia.providers.base import ProviderAdapter
 from kcia.providers.catalog import ProviderCatalogEntry, load_catalog
 from kcia.providers.claude import ClaudeAdapter
 from kcia.providers.cursor import CursorAdapter
+from kcia.providers.ollama.adapter import OllamaAdapter
 from kcia.providers.opencode import OpenCodeAdapter
 
 AGENT_ROLES = ("planner", "builder")
@@ -18,6 +19,7 @@ _BUILTIN_ADAPTERS: dict[str, type] = {
     "claude": ClaudeAdapter,
     "cursor": CursorAdapter,
     "opencode": OpenCodeAdapter,
+    "ollama": OllamaAdapter,
 }
 
 
@@ -52,6 +54,10 @@ def is_provider_installed(provider_id: str) -> bool:
     catalog = load_catalog()
     if provider_id not in catalog:
         return False
+    registry = build_registry()
+    adapter = registry.get(provider_id)
+    if adapter is not None:
+        return adapter.locate() is not None
     executable = catalog[provider_id].executable
     return shutil.which(executable) is not None
 

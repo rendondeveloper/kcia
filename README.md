@@ -1,7 +1,7 @@
 # kcia
 
-**Control plane + CLI** that drives your existing agent tools (Claude Code, Cursor) through a
-structured, auditable pipeline — without calling any LLM API directly.
+**Control plane + CLI** that drives your existing agent tools (Claude Code, Cursor, Ollama)
+through a structured, auditable pipeline — without calling a hosted LLM API directly.
 
 You install kcia **once** on your machine. Each project only gets a `.ai/` directory
 (gitignored) when you run `kcia init`.
@@ -13,9 +13,9 @@ You install kcia **once** on your machine. Each project only gets a `.ai/` direc
 Every step, in the order you actually run them. Each one is explained in detail in
 [Step by step](#step-by-step) below.
 
-**Before you start:** Python 3.11+, `git`, and the CLI of each provider you plan to use —
-`claude` and/or `cursor-agent` — **installed and logged in**. kcia never calls an LLM API;
-it drives the CLI you already pay for. Details in [What you need](#1-what-you-need).
+**Before you start:** Python 3.11+, `git`, and whichever provider you plan to use —
+`claude` and/or `cursor-agent` (hosted CLIs you already pay for), or a local **Ollama**
+daemon for fully offline runs. Details in [What you need](#1-what-you-need).
 
 ```bash
 # ── Once per machine ────────────────────────────────────────────────────────
@@ -69,19 +69,24 @@ steps 5–9 once per piece of work.
 - Python 3.11+
 - `git` — required. kcia branches and commits through the `git` binary in your repository.
 - `gh` — **optional**, only when git flow is configured to open a PR on `kcia done` (install: <https://cli.github.com>).
-- A provider CLI, **installed and logged in**, for each role you use.
+- A **provider**, installed and reachable, for each role you use.
 
-kcia never calls an LLM API. It shells out to the CLI you already have, so that CLI — and
-its session — is a hard requirement, not an optional integration:
+kcia does not call Anthropic, OpenAI, or Cursor APIs directly. For hosted providers it
+shells out to the CLI you already have; for Ollama it talks to your local daemon over HTTP
+and runs its own tool loop. In all cases the provider — and its session, when there is one —
+is a hard requirement, not an optional integration:
 
-| Provider | Binary | Install | Log in | Check |
+| Provider | What kcia checks | Install | Log in | Check |
 |---|---|---|---|---|
-| Claude Code | `claude` | `npm i -g @anthropic-ai/claude-code` or `brew install --cask claude-code` | `claude auth login` | `claude auth status` |
-| Cursor | `cursor-agent` | install Cursor, enable the CLI from the command palette | `cursor-agent login` | `cursor-agent status` |
+| Claude Code | `claude` on `PATH` | `npm i -g @anthropic-ai/claude-code` or `brew install --cask claude-code` | `claude auth login` | `claude auth status` |
+| Cursor | `cursor-agent` on `PATH` | install Cursor, enable the CLI from the command palette | `cursor-agent login` | `cursor-agent status` |
+| Ollama (local) | daemon at `OLLAMA_HOST` (default `http://127.0.0.1:11434`) | `brew install ollama` then `ollama serve` | none | `curl $OLLAMA_HOST/api/version` |
 
-The default setup uses **both**: `planner` on Claude Code and `builder` on Cursor. One CLI is
-enough only if you point both roles at the same provider (`kcia agent set builder claude …`).
-Billing is whatever those subscriptions already cost you — kcia adds none of its own.
+The default setup uses **both** hosted CLIs: `planner` on Claude Code and `builder` on
+Cursor. One provider is enough if you point both roles at it (`kcia agent set builder claude
+…`, or both at Ollama with different local models). Billing is whatever those subscriptions
+already cost you — kcia adds none of its own. Ollama runs on your hardware; kcia only needs
+the daemon reachable, not the `ollama` binary itself.
 
 **`kcia doctor` answers all of this for your machine** once kcia is installed: Python and
 git, whether each provider is installed and authenticated (and as whom), whether your
@@ -91,6 +96,7 @@ after installing, and again whenever anything looks wrong.
 ```
 Providers
   ✓ claude: authenticated as you@example.com (pro)
+  ✓ ollama: authenticated as http://127.0.0.1:11434 (ollama 0.5.0)
   ! cursor: not installed
       Instala Cursor y habilita el CLI desde la paleta de comandos.
 
@@ -154,6 +160,10 @@ kcia agent models --live       # ask the installed CLI and flag stale catalog en
 kcia agent set planner claude --model claude-opus-5
 kcia agent set builder cursor --model composer-2.5
 kcia agent show
+
+# Local models via Ollama — any tag you have pulled works; no catalog edit required.
+kcia agent set planner ollama --model qwen3:14b
+kcia agent set builder ollama --model devstral-small-2:24b
 ```
 
 Preferences are stored in `~/.config/kcia/config.yaml` and apply to every project unless
@@ -161,9 +171,12 @@ overridden per repo.
 
 Note that **Cursor uses its own model ids**, not Anthropic's: `composer-2.5`,
 `claude-sonnet-5-thinking-high`, `auto`, and so on — plain `claude-sonnet-5` is not one of
-them. `auto` is Cursor's default and lets it pick per request. The catalog in
-`control-plane/providers/catalog.yaml` is curated by hand, so `kcia agent models --live`
-compares it against `cursor-agent --list-models` and exits non-zero on drift.
+them. `auto` is Cursor's default and lets it pick per request. **Ollama** uses the tag
+exactly as `ollama list` shows it (`qwen3:14b`, `devstral-small-2:24b`, …). The catalog
+lists documented defaults and suggested `num_ctx` values; with `model_source: live` any
+pulled tag is accepted. For hosted providers the catalog is curated by hand, so
+`kcia agent models --live` compares it against the installed CLI (`cursor-agent
+--list-models`, `GET /api/tags` for Ollama) and exits non-zero on drift.
 
 #### Per-project models
 
@@ -871,10 +884,12 @@ How well that is enforced differs by provider, and the difference is worth knowi
 |---|---|---|
 | Claude Code | `--mcp-config <file>` per invocation, plus `--strict-mcp-config` | **Enforced** — each wave gets a config containing only its role's servers, and globally registered servers are ignored |
 | Cursor | reads `.cursor/mcp.json` for the whole repository | **Declarative only** — there is no per-run override, so a builder wave on Cursor can still reach an enabled server |
+| Ollama | not supported in v1 | MCP is not bridged into the in-process tool loop |
 
 So a planner-only server is genuinely unreachable from the builder when the builder runs on
 Claude Code, and is only a convention when it runs on Cursor. Treat the catalog's `roles`
-as a real boundary on Claude and as documentation on Cursor.
+as a real boundary on Claude and as documentation on Cursor. Ollama waves never reach MCP
+servers.
 
 Enablement lives in `.ai/mcp.yaml` and, for Cursor, `.cursor/mcp.json`. Both are gitignored
 — `.cursor/mcp.json` because a server entry may carry `headers` with a token — so enabling a
@@ -993,8 +1008,9 @@ Concretely, kcia:
 2. **Composes** a prompt per pipeline step (**wave**) from guardrails, profile references,
    project context, and task state — filtering and budgeting what goes in so the model is
    not flooded with guidance it does not need yet.
-3. **Runs** the provider CLI you already pay for (`claude`, `cursor-agent`) as a subprocess,
-   with real permission restrictions and per-profile validation after implementation.
+3. **Runs** the configured provider — as a subprocess for hosted CLIs (`claude`,
+   `cursor-agent`), or in-process over HTTP for Ollama — with real permission restrictions
+   and per-profile validation after implementation.
 4. **Persists** everything on disk — prompts, outputs, token counts — so every step is
    inspectable and the planner → builder handoff is a file, not a conversation thread.
 
@@ -1048,10 +1064,11 @@ needs no Python.
 
 ### The pipeline
 
-kcia never talks to an LLM API. It drives the **CLI you already have installed and pay
-for** — `claude` or `cursor-agent` — as a subprocess: it composes a prompt on disk, pipes
-it into the CLI's stdin, and parses the CLI's structured stdout back into normalized
-events. Your subscription, your models, your machine.
+kcia never talks to a hosted LLM API. For Claude Code and Cursor it drives the **CLI you
+already have installed and pay for** as a subprocess: it composes a prompt on disk, pipes
+it into the CLI's stdin, and parses the CLI's structured stdout back into normalized events.
+For Ollama it calls your local daemon directly and runs kcia's own tool loop on top of
+`POST /api/chat`. Your subscription (or your GPU), your models, your machine.
 
 ```mermaid
 flowchart TD
@@ -1065,9 +1082,10 @@ flowchart TD
     X["Context<br/>.ai/context/*.md"] --> D
     T["Wave instruction"] --> D
     D --> E["Write prompt to disk<br/>.ai/local/runs/&lt;wave&gt;-NN.prompt.md"]
-    E --> F["Subprocess — prompt via stdin"]
-    F --> H["claude / cursor-agent<br/>stream-json stdout"]
-    H --> I["Parse → StreamEvents"]
+    E --> F["Run provider"]
+    F --> H["CLI subprocess<br/>or Ollama HTTP loop"]
+    H --> I2["stream-json / NDJSON"]
+    I2 --> I["Parse → StreamEvents"]
     I --> J["Write wave output<br/>task.md, plan.md, …"]
     J --> K{"validation<br/>required?"}
     K -->|yes| L["Run test/lint per profile root"]
@@ -1079,13 +1097,13 @@ flowchart TD
 #### End-to-end flow
 
 ```
-your project/          ~/tools/kcia/              provider CLI
-─────────────          ─────────────              ────────────
+your project/          ~/tools/kcia/              provider
+─────────────          ─────────────              ────────
 kcia init         →    detect + control-plane  →  (no model yet)
 kcia work        →    session.json
-kcia work         →    compose prompt        →    claude / cursor-agent
+kcia work         →    compose prompt        →    claude / cursor-agent / ollama
                        write prompt.md            ↓
-                       parse stdout         ←    stream-json events
+                       parse events         ←    stream-json or NDJSON
                        write plan.md
                        run dart test / flutter test
 ```
@@ -1226,11 +1244,14 @@ Measured on `tests/fixtures/repos/melos_mono` with one active profile (`backend-
 Guardrails are plain Markdown in the control plane — edit them and the next `kcia work`
 picks up the change with no reinstall.
 
-### 5. How Python talks to the model CLIs
+### 5. How Python talks to providers
 
-`providers/runner.py` is provider-agnostic. It asks the adapter to build an argv, spawns it
-with `subprocess.Popen`, writes the prompt to **stdin** (never as an argument — prompts are
-tens of kilobytes), and reads stdout line by line:
+`providers/runner.py` is provider-agnostic. Every call site goes through `call_provider`,
+which picks one of two execution modes:
+
+**Subprocess (Claude Code, Cursor, OpenCode).** The adapter builds an argv; the runner
+spawns it with `subprocess.Popen`, writes the prompt to **stdin** (never as an argument —
+prompts are tens of kilobytes), and reads stdout line by line:
 
 ```python
 cmd = adapter.build_command(req)          # provider-specific argv
@@ -1249,14 +1270,22 @@ claude --print --output-format stream-json --model <model>
 ```
 
 `providers/cursor.py` builds the `cursor-agent --print --output-format stream-json`
-equivalent. Each adapter translates its own JSON dialect into the **same eight events** —
-`TextDelta`, `ToolCallStart`, `ToolCallEnd`, `FileRead`, `FileWrite`, `UsageUpdate`,
-`TurnEnd`, `ProviderError`. The wave runner only ever sees those, so there is no
-`if provider == "claude"` anywhere outside `providers/`. Adding a provider is a new adapter
-module plus a catalog entry; the registry also discovers third-party adapters through the
-`kcia.providers` entry point group.
+equivalent.
 
-The runner supervises the subprocess while it works:
+**In-process (Ollama).** The adapter implements `run()` instead. kcia calls
+`POST /api/chat` on the local daemon, streams NDJSON chunks, and executes tools itself
+(`read_file`, `write_file`, `grep`, `run_command`, …) with path confinement and
+`edit_scope` enforcement. There is no subprocess and no `ollama run` REPL — tool calling
+lives entirely in kcia. `num_ctx` is sent explicitly per model so Ollama does not silently
+truncate long prompts.
+
+Both modes translate into the **same eight events** — `TextDelta`, `ToolCallStart`,
+`ToolCallEnd`, `FileRead`, `FileWrite`, `UsageUpdate`, `TurnEnd`, `ProviderError`. The
+wave runner only ever sees those, so there is no `if provider == "claude"` anywhere outside
+`providers/`. Adding a provider is a new adapter module plus a catalog entry; the registry
+also discovers third-party adapters through the `kcia.providers` entry point group.
+
+The subprocess runner supervises the child while it works:
 
 - **stderr on a separate thread**, so a chatty CLI cannot deadlock the pipe
 - **idle timeout** (default 180s without a line) kills the process
@@ -1271,8 +1300,8 @@ persisted to the session.
 
 ### 6. Permissions
 
-The wave's `allow_edits` becomes a real restriction on the provider CLI, not a polite
-request in the prompt:
+The wave's `allow_edits` becomes a real restriction, not a polite request in the prompt.
+How that is enforced depends on the provider:
 
 | `allow_edits` | Claude Code invocation |
 |---|---|
@@ -1280,7 +1309,12 @@ request in the prompt:
 | `true` | `--permission-mode bypassPermissions` |
 | `true` with an explicit tool allowlist | `--permission-mode acceptEdits --allowed-tools …` |
 
-So the planner **cannot** modify your code even if the model decides to try.
+On **Ollama**, kcia registers write and shell tools only when `allow_edits` is true, and
+checks each write path against the wave's `edit_scope` (e.g. `.ai/**` on documentation
+waves). Reads are confined to the repository root.
+
+So the planner **cannot** modify your code even if the model decides to try — on Claude
+that is a CLI flag; on Ollama it is simply absent from the tool list.
 
 ### 7. Validation is per profile, never global
 
@@ -1341,9 +1375,9 @@ what kcia can tell you from headless invocations.
 
 Being honest about what the code does not yet do:
 
-- **`edit_scope` is not enforced.** Waves declare it (`documentation-init` is meant to be
-  confined to `.ai/**`), but the runner does not translate it into a tool restriction — a
-  wave with `allow_edits: true` currently gets full write access.
+- **`edit_scope` is only enforced on Ollama.** Waves declare it (`documentation-init` is
+  meant to be confined to `.ai/**`), and the Ollama tool loop honours it — but hosted CLI
+  providers still get full write access whenever `allow_edits` is true.
 - **Workflow files are not injected** into prompts yet, only references and rules.
 - **Sessions are not resumed** across waves — every wave is a fresh invocation, and the
   handoff happens through files.
@@ -1362,7 +1396,7 @@ Being honest about what the code does not yet do:
 |---|---|
 | Project setup | `kcia init` — detection, manifest, bundles, adapters, gitignore |
 | Profiles | `profile list/show/detect/validate/scaffold`, inheritance, packs, resolution |
-| Agents | `agent set/show/swap` — Claude and Cursor adapters |
+| Agents | `agent set/show/swap` — Claude, Cursor, and Ollama adapters |
 | Tasks | `task init/show/fetch/answer/abort` — `--scope` for path-limited profiles, Jira issues fetched into context |
 | Waves | `wave list/run/approve/plan/retry/skip/logs` — session, lock, prompt composition, validation |
 | Diagnostics | `doctor` — toolchain, provider install and auth, agent and repo readiness |

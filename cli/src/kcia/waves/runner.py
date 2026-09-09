@@ -312,6 +312,7 @@ def run_wave(
             allowed_tools=None,
             disallowed_tools=None,
             cwd=session.repo_root,
+            edit_scope=wave.edit_scope or None,
         )
 
         if on_wave_start is not None:
@@ -386,6 +387,7 @@ def run_wave(
                     allowed_tools=None,
                     disallowed_tools=None,
                     cwd=session.repo_root,
+                    edit_scope=wave.edit_scope or None,
                 )
                 result = call_provider(runner, adapter, req, on_event, should_cancel)
                 _raise_if_cancelled(wave, result)
@@ -585,6 +587,7 @@ def run_wave_for_profile(
             allowed_tools=None,
             disallowed_tools=None,
             cwd=cwd,
+            edit_scope=wave.edit_scope or None,
         )
 
         runner = provider_runner or run_provider
@@ -680,6 +683,7 @@ def run_wave_for_profile(
                     allowed_tools=None,
                     disallowed_tools=None,
                     cwd=cwd,
+                    edit_scope=wave.edit_scope or None,
                 )
                 result = call_provider(
                     runner, adapter, req, on_event, should_cancel
@@ -854,6 +858,7 @@ def _run_integration_check(
         allowed_tools=None,
         disallowed_tools=None,
         cwd=repo_root,
+        edit_scope=wave.edit_scope or None,
     )
 
     if before_run is not None:

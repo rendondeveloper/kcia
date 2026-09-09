@@ -42,6 +42,8 @@ class RunRequest:
     # Provider-specific MCP config file, when the wave's role has servers.
     mcp_config: Path | None = None
     mcp_tools: list[str] | None = None
+    # gitwildmatch patterns (relative to cwd) limiting write tools; None = unrestricted.
+    edit_scope: tuple[str, ...] | None = None
 
 
 @dataclass

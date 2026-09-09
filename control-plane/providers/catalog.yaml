@@ -46,3 +46,14 @@ providers:
       - { id: opencode/nemotron-3.5-lightning-free, tier: fast, best_for: [documentation, pr-prep] }
       - { id: opencode/x-preview-f-free, tier: fast, best_for: [documentation] }
     default_model: opencode/big-pickle
+  ollama:
+    display_name: "Ollama (local)"
+    executable: ollama
+    install_hint: "brew install ollama  then  ollama serve"
+    auth: none
+    auth_hint: "No auth. Ensure the daemon is running (`ollama serve`) and OLLAMA_HOST points at it."
+    model_source: live
+    models:
+      - { id: qwen3:14b, tier: balanced, best_for: [planning, analysis], num_ctx: 32768 }
+      - { id: devstral-small-2:24b, tier: max, best_for: [implementation, refactor], num_ctx: 32768 }
+    default_model: devstral-small-2:24b

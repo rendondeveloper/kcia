@@ -36,7 +36,15 @@ def call_provider(
 
     Runners injected by tests take just (adapter, req); passing the callbacks
     unconditionally would break them.
+
+    When the default subprocess runner is used and the adapter defines ``run``,
+    dispatch to the adapter-owned in-process execution instead.
     """
+    if runner is run_provider:
+        adapter_run = getattr(adapter, "run", None)
+        if callable(adapter_run):
+            runner = _adapter_owned_runner(adapter_run)
+
     optional = {"on_event": on_event, "should_cancel": should_cancel}
     optional = {name: value for name, value in optional.items() if value is not None}
     if not optional:
@@ -49,6 +57,27 @@ def call_provider(
         name: value for name, value in optional.items() if name in signature.parameters
     }
     return runner(adapter, req, **accepted)
+
+
+def _adapter_owned_runner(
+    adapter_run: Callable[..., RunResult],
+) -> Callable[..., RunResult]:
+    """Wrap an adapter ``run`` method so it matches the runner call shape."""
+
+    def _runner(
+        adapter: ProviderAdapter,
+        req: RunRequest,
+        *,
+        on_event: Callable[[StreamEvent], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> RunResult:
+        return adapter_run(
+            req,
+            on_event=on_event,
+            should_cancel=should_cancel,
+        )
+
+    return _runner
 
 
 def run_provider(

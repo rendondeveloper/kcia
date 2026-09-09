@@ -14,6 +14,7 @@ class ProviderModel:
     id: str
     tier: str | None = None
     best_for: list[str] | None = None
+    num_ctx: int | None = None
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class ProviderCatalogEntry:
     auth_hint: str
     models: list[ProviderModel]
     default_model: str
+    model_source: str | None = None
 
 
 def load_catalog() -> dict[str, ProviderCatalogEntry]:
@@ -37,6 +39,7 @@ def load_catalog() -> dict[str, ProviderCatalogEntry]:
                 id=item["id"],
                 tier=item.get("tier"),
                 best_for=item.get("best_for"),
+                num_ctx=item.get("num_ctx"),
             )
             for item in raw.get("models", [])
         ]
@@ -48,5 +51,6 @@ def load_catalog() -> dict[str, ProviderCatalogEntry]:
             auth_hint=raw.get("auth_hint", ""),
             models=models,
             default_model=raw.get("default_model", models[0].id if models else ""),
+            model_source=raw.get("model_source"),
         )
     return entries

@@ -233,7 +233,7 @@ def test_agent_models_rejects_unknown_provider() -> None:
         cwd=ROOT,
     )
     assert result.returncode == 1
-    assert "Available: claude, cursor, opencode" in result.stdout
+    assert "Available: claude, cursor, ollama, opencode" in result.stdout
 
 
 def test_catalog_opencode_models_use_real_ids() -> None:

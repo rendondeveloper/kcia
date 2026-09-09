@@ -158,11 +158,16 @@ def model_in_catalog(provider: str, model: str) -> bool:
 
     Stored configuration outlives the catalog: a model that is renamed upstream
     stays in config.yaml and silently reaches the provider as an invalid id.
+
+    Providers with ``model_source: live`` accept any non-empty model id; the
+    catalog lists documented defaults, not a hard allowlist.
     """
     catalog = load_catalog()
     entry = catalog.get(provider)
     if entry is None:
         return False
+    if entry.model_source == "live":
+        return bool(model)
     return any(item.id == model for item in entry.models)
 
 
@@ -180,13 +185,16 @@ def set_agent(
         available = ", ".join(sorted(catalog))
         raise ValueError(f"unknown provider '{provider}'; available: {available}")
 
-    model_ids = [item.id for item in catalog[provider].models]
-    chosen_model = model or catalog[provider].default_model
-    if chosen_model not in model_ids:
+    entry = catalog[provider]
+    model_ids = [item.id for item in entry.models]
+    chosen_model = model or entry.default_model
+    if entry.model_source != "live" and chosen_model not in model_ids:
         raise ValueError(
             f"unknown model '{chosen_model}' for provider '{provider}'; "
             f"available: {', '.join(model_ids)}"
         )
+    if not chosen_model:
+        raise ValueError(f"no model specified for provider '{provider}'")
 
     setting = AgentSetting(provider=provider, model=chosen_model, effort=effort)
     payload = {
