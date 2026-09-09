@@ -237,11 +237,15 @@ def test_agent_models_rejects_unknown_provider() -> None:
 
 
 def test_catalog_opencode_models_use_real_ids() -> None:
-    """Ids resolved with `opencode models --verbose`; they are `provider/model`."""
+    """Ids resolved with the authenticated `opencode models` command."""
     entry = load_catalog()["opencode"]
     ids = [model.id for model in entry.models]
     assert "opencode/big-pickle" in ids
     assert "opencode/mimo-v2.5-free" in ids
+    assert "opencode-go/gpt-5.6-luna" in ids
+    assert "opencode/hy3-free" not in ids
+    assert "opencode/x-preview-f-free" not in ids
+    assert len(ids) == 34
     assert entry.default_model == "opencode/big-pickle"
     adapter = get_adapter("opencode")
     assert adapter.id == "opencode"
