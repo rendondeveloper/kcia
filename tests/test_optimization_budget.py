@@ -29,7 +29,9 @@ def test_total_task_input_is_below_target(melos_session) -> None:
     # cross-ref.
     # 16719 -> 16773: validation.md requires zero analyzer warnings (analysis +
     # implementation waves).
-    assert total <= 16773
+    # 16773 -> 17178: wave-aware blocked protocol on post-understanding waves and
+    # a directive implementation instruction.
+    assert total <= 17178
     # Layout content exceeds phase-0; absolute cap until a trim pass elsewhere.
-    assert total <= PHASE0_TASK_TOKENS * 1.131
+    assert total <= PHASE0_TASK_TOKENS * 1.16
 

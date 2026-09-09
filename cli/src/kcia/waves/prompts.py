@@ -205,7 +205,11 @@ def build_prompt_with_stats(
     )
     add_section(
         "blocked-protocol",
-        render_template(prompts_dir(), "_blocked.md.j2"),
+        render_template(
+            prompts_dir(),
+            "_blocked.md.j2",
+            can_ask_questions=wave.can_ask_questions,
+        ),
         sort_key=_SK_BLOCKED_PROTOCOL,
     )
     add_section("wave-instruction", wave_instruction, sort_key=_SK_WAVE_INSTRUCTION)

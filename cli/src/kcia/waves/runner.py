@@ -22,7 +22,11 @@ from kcia.mcp.config import (
     render_claude_config,
     servers_for_role,
 )
-from kcia.waves.blocked import detect_blocked
+from kcia.waves.blocked import (
+    detect_blocked,
+    format_premature_block_retry,
+    should_honour_block,
+)
 from kcia.waves.definitions import WaveDefinition, get_wave, load_waves
 from kcia.waves.prompts import build_prompt, build_prompt_with_stats
 from kcia.waves.session import Session, context_dir, load_manifest, runs_dir
@@ -73,11 +77,13 @@ class WaveBlocked(Exception):
         output_path: Path | None,
         *,
         profile_id: str | None = None,
+        tool_calls: int = 0,
     ) -> None:
         self.wave = wave
         self.reason = reason
         self.output_path = output_path
         self.profile_id = profile_id
+        self.tool_calls = tool_calls
         super().__init__(f"wave '{wave.id}' is blocked: {reason}")
 
 
@@ -283,67 +289,88 @@ def run_wave(
                 f"provider '{agent.provider}' is not installed. {entry.install_hint}"
             )
 
-        prompt, prompt_stats = build_prompt_with_stats(
-            wave, session, validation_error=validation_error
-        )
-        if prompt_stats.dropped_tokens:
-            dropped_count = sum(1 for section in prompt_stats.sections if section.dropped)
-            print(
-                f"warning: dropped {dropped_count} reference(s) to fit the context budget",
-                flush=True,
-            )
-        prompt_path = _write_prompt_file(session, wave_id, attempts, prompt)
-
-        # Rendered per wave, so a role only ever sees the servers it may use.
-        mcp_config = _render_mcp_config(session, wave, agent.provider)
-        mcp_tools = allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
-
-        req = RunRequest(
-            prompt=prompt,
-            model=agent.model,
-            mcp_config=mcp_config,
-            mcp_tools=mcp_tools,
-            allow_edits=wave.allow_edits,
-            stream=adapter.capabilities.supports_streaming,
-            workspace_dirs=[session.repo_root],
-            session_id=None,
-            resume=False,
-            effort=agent.effort,
-            allowed_tools=None,
-            disallowed_tools=None,
-            cwd=session.repo_root,
-            edit_scope=wave.edit_scope or None,
-        )
-
-        if on_wave_start is not None:
-            on_wave_start(wave, agent)
-
-        runner = provider_runner or run_provider
-        result = call_provider(runner, adapter, req, on_event, should_cancel)
-        _raise_if_cancelled(wave, result)
-        # A wave can invoke the provider several times (validation retries); the token
-        # counts reported are the total for the wave, not just the last attempt.
+        premature_block_retries = 0
+        current_validation_error = validation_error
         usage = _Usage()
-        usage.add(result)
+        runner = provider_runner or run_provider
+        result = None
 
-        # Checked before writing: a blocked response is a question, not the
-        # artifact this wave produces. Writing it would put "BLOCKED: …" into
-        # task.md or plan.md, which every later wave then reads as context.
-        reason = detect_blocked(result.output_text)  # type: ignore[attr-defined]
-        if reason:
-            session.set_wave_status(
-                wave_id,
-                "blocked",
-                finished_at=_now_iso(),
-                blocked_reason=reason,
-                prompt_path=str(prompt_path) if prompt_path else None,
+        while True:
+            prompt, prompt_stats = build_prompt_with_stats(
+                wave, session, validation_error=current_validation_error
             )
-            session.save()
-            raise WaveBlocked(
-                wave,
-                reason,
-                _write_blocked_response(session, wave_id, attempts, result.output_text),  # type: ignore[attr-defined]
+            if prompt_stats.dropped_tokens:
+                dropped_count = sum(1 for section in prompt_stats.sections if section.dropped)
+                print(
+                    f"warning: dropped {dropped_count} reference(s) to fit the context budget",
+                    flush=True,
+                )
+            prompt_path = _write_prompt_file(session, wave_id, attempts, prompt)
+
+            # Rendered per wave, so a role only ever sees the servers it may use.
+            mcp_config = _render_mcp_config(session, wave, agent.provider)
+            mcp_tools = allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
+
+            req = RunRequest(
+                prompt=prompt,
+                model=agent.model,
+                mcp_config=mcp_config,
+                mcp_tools=mcp_tools,
+                allow_edits=wave.allow_edits,
+                stream=adapter.capabilities.supports_streaming,
+                workspace_dirs=[session.repo_root],
+                session_id=None,
+                resume=False,
+                effort=agent.effort,
+                allowed_tools=None,
+                disallowed_tools=None,
+                cwd=session.repo_root,
+                edit_scope=wave.edit_scope or None,
             )
+
+            if on_wave_start is not None and result is None:
+                on_wave_start(wave, agent)
+
+            result = call_provider(runner, adapter, req, on_event, should_cancel)
+            _raise_if_cancelled(wave, result)
+            # A wave can invoke the provider several times (validation retries); the
+            # token counts reported are the total for the wave, not just the last attempt.
+            usage.add(result)
+
+            # Checked before writing: a blocked response is a question, not the
+            # artifact this wave produces. Writing it would put "BLOCKED: …" into
+            # task.md or plan.md, which every later wave then reads as context.
+            reason = detect_blocked(result.output_text)  # type: ignore[attr-defined]
+            if reason:
+                blocked_path = _write_blocked_response(
+                    session, wave_id, attempts, result.output_text  # type: ignore[attr-defined]
+                )
+                attempt_tool_calls = int(getattr(result, "tool_calls", 0) or 0)
+                if should_honour_block(attempt_tool_calls, premature_block_retries):
+                    session.set_wave_status(
+                        wave_id,
+                        "blocked",
+                        finished_at=_now_iso(),
+                        blocked_reason=reason,
+                        prompt_path=str(prompt_path) if prompt_path else None,
+                    )
+                    session.save()
+                    raise WaveBlocked(
+                        wave,
+                        reason,
+                        blocked_path,
+                        tool_calls=attempt_tool_calls,
+                    )
+                premature_block_retries += 1
+                attempts += 1
+                current_validation_error = format_premature_block_retry(
+                    reason, session.repo_root
+                )
+                session.set_wave_status(wave_id, "running", attempts=attempts)
+                session.save()
+                continue
+
+            break
 
         output_path = _write_wave_outputs(wave, session, result.output_text)  # type: ignore[attr-defined]
 
@@ -358,7 +385,7 @@ def run_wave(
                 repo_root=session.repo_root,
             )
             retry_limit = 3
-            current_error = validation_error
+            current_error = current_validation_error
             for _ in range(retry_limit):
                 report = run_validation(plan, retry_limit=1)
                 if report.success:
@@ -556,71 +583,96 @@ def run_wave_for_profile(
                 f"provider '{agent.provider}' is not installed. {entry.install_hint}"
             )
 
-        # Only show the bundle for the profile this thread is editing.
-        prompt, _ = build_prompt_with_stats(
-            wave,
-            session,
-            validation_error=validation_error,
-            active_profile_ids_override=[profile.profile_id],
-        )
-
-        prompt_path = _write_prompt_file(session, f"{wave_id}-{profile.profile_id}", 1, prompt)
-
-        # Rendered per wave: role gates which servers can be used.
-        mcp_config = _render_mcp_config(session, wave, agent.provider)
-        mcp_tools = allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
-
-        workspace_dirs = _workspace_dirs_for_profile(session.repo_root, profile.roots)
-        cwd = workspace_dirs[0]
-
-        req = RunRequest(
-            prompt=prompt,
-            model=agent.model,
-            mcp_config=mcp_config,
-            mcp_tools=mcp_tools,
-            allow_edits=wave.allow_edits,
-            stream=adapter.capabilities.supports_streaming,
-            workspace_dirs=workspace_dirs,
-            session_id=None,
-            resume=False,
-            effort=agent.effort,
-            allowed_tools=None,
-            disallowed_tools=None,
-            cwd=cwd,
-            edit_scope=wave.edit_scope or None,
-        )
-
+        premature_block_retries = 0
+        current_validation_error = validation_error
         runner = provider_runner or run_provider
-        result = call_provider(runner, adapter, req, on_event, should_cancel)
-        _raise_if_cancelled(wave, result)
+        result = None
 
-        reason = detect_blocked(result.output_text)  # type: ignore[attr-defined]
-        if reason:
-            with save_lock:
-                session.set_profile_wave_status(
-                    profile.profile_id,
-                    wave_id,
-                    "blocked",
-                    finished_at=_now_iso(),
-                    blocked_reason=reason,
-                    prompt_path=str(prompt_path) if prompt_path else None,
-                )
+        while True:
+            # Only show the bundle for the profile this thread is editing.
+            prompt, _ = build_prompt_with_stats(
+                wave,
+                session,
+                validation_error=current_validation_error,
+                active_profile_ids_override=[profile.profile_id],
+            )
+
+            prompt_path = _write_prompt_file(
+                session, f"{wave_id}-{profile.profile_id}", attempts, prompt
+            )
+
+            # Rendered per wave: role gates which servers can be used.
+            mcp_config = _render_mcp_config(session, wave, agent.provider)
+            mcp_tools = (
+                allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
+            )
+
+            workspace_dirs = _workspace_dirs_for_profile(session.repo_root, profile.roots)
+            cwd = workspace_dirs[0]
+
+            req = RunRequest(
+                prompt=prompt,
+                model=agent.model,
+                mcp_config=mcp_config,
+                mcp_tools=mcp_tools,
+                allow_edits=wave.allow_edits,
+                stream=adapter.capabilities.supports_streaming,
+                workspace_dirs=workspace_dirs,
+                session_id=None,
+                resume=False,
+                effort=agent.effort,
+                allowed_tools=None,
+                disallowed_tools=None,
+                cwd=cwd,
+                edit_scope=wave.edit_scope or None,
+            )
+
+            result = call_provider(runner, adapter, req, on_event, should_cancel)
+            _raise_if_cancelled(wave, result)
+
+            reason = detect_blocked(result.output_text)  # type: ignore[attr-defined]
+            if reason:
+                attempt_tool_calls = int(getattr(result, "tool_calls", 0) or 0)
                 blocked_output = _write_blocked_response(
                     session,
                     f"{wave_id}-{profile.profile_id}",
-                    int(
-                        (session.data.get("profile_runs") or {})
-                        .get(profile.profile_id, {})
-                        .get("waves", {})
-                        .get(wave_id, {})
-                        .get("attempts", 1)
-                    ),
-                    result.output_text,
+                    attempts,
+                    result.output_text,  # type: ignore[attr-defined]
                 )
-                session.save()
-            raise WaveBlocked(
-                wave, reason, blocked_output, profile_id=profile.profile_id
-            )
+                if should_honour_block(attempt_tool_calls, premature_block_retries):
+                    with save_lock:
+                        session.set_profile_wave_status(
+                            profile.profile_id,
+                            wave_id,
+                            "blocked",
+                            finished_at=_now_iso(),
+                            blocked_reason=reason,
+                            prompt_path=str(prompt_path) if prompt_path else None,
+                        )
+                        session.save()
+                    raise WaveBlocked(
+                        wave,
+                        reason,
+                        blocked_output,
+                        profile_id=profile.profile_id,
+                        tool_calls=attempt_tool_calls,
+                    )
+                premature_block_retries += 1
+                attempts += 1
+                current_validation_error = format_premature_block_retry(
+                    reason, session.repo_root
+                )
+                with save_lock:
+                    session.set_profile_wave_status(
+                        profile.profile_id,
+                        wave_id,
+                        "running",
+                        attempts=attempts,
+                    )
+                    session.save()
+                continue
+
+            break
 
         output_path = _write_wave_outputs_profile(
             wave=wave,

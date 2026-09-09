@@ -350,8 +350,10 @@ Layout: monorepo. Detected 4 packages.
 
 ## If you cannot proceed
 
+
 If continuing would mean guessing, reply with one line — `BLOCKED: <question>` —
 and nothing else. An open question you can work around is not a blocker.
+
 
 ## Wave: understanding
 

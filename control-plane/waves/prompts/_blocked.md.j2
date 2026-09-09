@@ -1,4 +1,15 @@
 ## If you cannot proceed
 
+{% if can_ask_questions %}
 If continuing would mean guessing, reply with one line — `BLOCKED: <question>` —
 and nothing else. An open question you can work around is not a blocker.
+{% else %}
+The plan in `.ai/context/plan.md` is human-approved; its decisions are final. If the
+plan contains a section recording decisions (for example under *Decisions* or
+*Open questions*), those decisions are the answer — do not ask for them to be
+confirmed.
+
+Reply with `BLOCKED: <question>` only when you discover a genuine contradiction
+**while reading the code** — not because you have not read the plan or the files
+yet. An open question you can work around is not a blocker.
+{% endif %}

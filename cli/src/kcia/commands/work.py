@@ -277,7 +277,12 @@ def report_retry_result(target_id: str, result: WaveResult) -> None:
 
 def _render_blocked(blocked: WaveBlocked) -> None:
     typer.echo("")
-    typer.echo(f"Stopped at `{blocked.wave.id}` — the agent cannot proceed.")
+    if blocked.tool_calls == 0:
+        typer.echo(
+            f"Stopped at `{blocked.wave.id}` — the agent stopped without reading any file."
+        )
+    else:
+        typer.echo(f"Stopped at `{blocked.wave.id}` — the agent cannot proceed.")
     typer.echo("")
     typer.echo(f"  {blocked.reason}")
     typer.echo("")

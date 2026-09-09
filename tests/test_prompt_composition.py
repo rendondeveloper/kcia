@@ -127,6 +127,21 @@ def test_ticket_mode_statement_does_not_repeat_the_key(melos_session) -> None:
     assert prompt.count("PROJ-42") == 1
 
 
+def test_blocked_protocol_differs_by_can_ask_questions(melos_session) -> None:
+    understanding = build_prompt(get_wave("understanding"), melos_session)
+    implementation = build_prompt(get_wave("implementation"), melos_session)
+
+    def blocked_section(prompt: str) -> str:
+        return prompt.split("## If you cannot proceed", 1)[1].split("## Wave:", 1)[0]
+
+    understanding_blocked = blocked_section(understanding)
+    implementation_blocked = blocked_section(implementation)
+
+    assert "human-approved" not in understanding_blocked
+    assert "human-approved" in implementation_blocked
+    assert "while reading the code" in implementation_blocked
+
+
 def test_scope_is_stated_in_the_prompt(melos_session) -> None:
     from kcia.waves.session import Session
 
