@@ -2,46 +2,9 @@
 
 ## Folder structure
 
-Each feature follows Clean Architecture with `data`/`domain`/`presentation` layers:
-
-the first packages can adjust if the repository use feature/features/lib etc
-
-```
-(feature/features/lib)/feature_example/
-├── feature_example.dart
-├── data/
-│   ├── data.dart
-│   ├── data_sources/
-│   │   ├── interface/
-│   │   │   ├── feature_example_remote_data_source.dart
-│   │   │   └── feature_example_local_data_source.dart
-│   │   ├── feature_example_remote_data_source_impl.dart
-│   │   └── feature_example_local_data_source_impl.dart
-│   ├── mappers/
-│   │   └── feature_example_mapper.dart
-│   ├── models/
-│   │   └── feature_example_model.dart
-│   └── repositories/
-│       └── feature_example_repository_impl.dart
-├── domain/
-│   ├── domain.dart
-│   ├── entities/
-│   │   ├── feature_example.dart
-│   │   └── feature_example_input.dart
-│   ├── repositories/
-│   │   └── feature_example_repository.dart
-│   └── usecases/
-│       └── get_feature_example.dart
-└── presentation/
-    ├── presentation.dart
-    ├── cubit/
-    │   ├── feature_example_cubit.dart
-    │   └── feature_example_state.dart
-    ├── screens/
-    │   └── feature_example_screen.dart
-    └── views/
-        └── feature_example_loaded_view.dart
-```
+Each feature follows the canonical layout in `_dart-core` `references/architecture.md`
+(`lib/features/<feature>/` with `data`/`domain`/`presentation` layers). That layout
+is mandatory — do not adapt it to match an existing divergent repo structure.
 
 ## Steps
 

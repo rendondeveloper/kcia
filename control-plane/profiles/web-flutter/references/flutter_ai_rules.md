@@ -26,6 +26,9 @@ mobile platforms.
 ## Project Structure
 * **Standard Structure:** Assumes a standard Flutter project structure with
   `lib/main.dart` as the primary application entry point.
+* **Feature layout:** Follow `_dart-core` `references/architecture.md` (clean
+  architecture + mandatory `lib/features/<feature>/` layout). Do not use
+  MVVM/MVC folder layouts instead.
 
 ## Flutter style guide
 * **SOLID Principles:** Apply SOLID principles throughout the codebase.
@@ -137,16 +140,10 @@ When building reusable APIs, such as a library, follow these principles.
   design. It should be clear, concise, and provide examples.
 
 ## Application Architecture
-* **Separation of Concerns:** Aim for separation of concerns similar to MVC/MVVM, with defined Model,
-  View, and ViewModel/Controller roles.
-* **Logical Layers:** Organize the project into logical layers:
-    * Presentation (widgets, screens)
-    * Domain (business logic classes)
-    * Data (model classes, API clients)
-    * Core (shared classes, utilities, and extension types)
-* **Feature-based Organization:** For larger projects, organize code by feature,
-  where each feature has its own presentation, domain, and data subfolders. This
-  improves navigability and scalability.
+
+App and feature structure: follow `_dart-core` `references/architecture.md`
+(clean architecture + mandatory `lib/features/<feature>/` layout). Do not use
+MVVM/MVC folder layouts instead.
 
 ## Lint Rules
 
@@ -190,8 +187,6 @@ linter:
   widgets, use `ChangeNotifier`.
 * **ListenableBuilder:** Use `ListenableBuilder` to listen to changes from a
   `ChangeNotifier` or other `Listenable`.
-* **MVVM:** When a more robust solution is needed, structure the app using the
-  Model-View-ViewModel (MVVM) pattern.
 * **Dependency Injection:** Use simple manual constructor dependency injection
   to make a class's dependencies explicit in its API, and to manage dependencies
   between different layers of the application.

@@ -47,26 +47,38 @@ exact symbols via `show`. Barrel imports without `show` are forbidden.
 
 ## Feature layout (canonical)
 
-Source of truth for where each artifact lives inside a feature. Cubit vs BLoC
-folder names are illustrative — pick the project's state manager, keep the same
-layer positions.
+Source of truth for where each artifact lives inside a feature. Feature root:
+`lib/features/<feature>/` (Flutter packages). Cubit vs BLoC folder names are
+illustrative — pick the project's state manager, keep the same layer positions.
+
+### Non-negotiable
+
+- The canonical layout is mandatory for new and modified features.
+- If the repository uses a different layout (`lib/feature/`, flat `lib/<feature>/`,
+  `feature/`, etc.), adjust the codebase to `lib/features/<feature>/…` — do not
+  keep the divergent structure and do not propose alternate trees.
+- Do not treat the current repo layout, tickets, or READMEs as higher authority
+  than this reference.
+- Do not block or ask whether to follow the layout — follow it.
 
 ### Artifact paths
 
+Paths below are under `lib/features/<feature>/`.
+
 | Artifact | Layer | Path |
 |----------|-------|------|
-| Entity | domain | `<feature>/domain/entities/<entity>.dart` |
-| Repository interface | domain | `<feature>/domain/repositories/<feature>_repository.dart` (flat — no `domain/data/` nesting) |
-| Use case | domain | `<feature>/domain/usecases/<verb>_<noun>.dart` |
-| DataSource interface | data | `<feature>/data/data_sources/interface/<feature>_*.dart` |
-| DataSource impl | data | `<feature>/data/data_sources/<feature>_*_impl.dart` (`Impl` suffix) |
-| Model | data | `<feature>/data/models/<feature>_model.dart` |
-| Mapper class | data | `<feature>/data/mappers/<feature>_mapper.dart` |
-| Repository impl | data | `<feature>/data/repositories/<feature>_repository_impl.dart` |
-| State holder + state | presentation | `<feature>/presentation/cubit/` or `presentation/bloc/` |
-| Screen | presentation | `<feature>/presentation/screens/<feature>_screen.dart` |
-| View | presentation | `<feature>/presentation/views/` (when a screen grows large) |
-| Feature barrel | feature root | `<feature>/<feature>.dart` |
+| Entity | domain | `domain/entities/<entity>.dart` |
+| Repository interface | domain | `domain/repositories/<feature>_repository.dart` (flat — no `domain/data/` nesting) |
+| Use case | domain | `domain/usecases/<verb>_<noun>.dart` |
+| DataSource interface | data | `data/data_sources/interface/<feature>_*.dart` |
+| DataSource impl | data | `data/data_sources/<feature>_*_impl.dart` (`Impl` suffix) |
+| Model | data | `data/models/<feature>_model.dart` |
+| Mapper class | data | `data/mappers/<feature>_mapper.dart` |
+| Repository impl | data | `data/repositories/<feature>_repository_impl.dart` |
+| State holder + state | presentation | `presentation/cubit/` or `presentation/bloc/` |
+| Screen | presentation | `presentation/screens/<feature>_screen.dart` |
+| View | presentation | `presentation/views/` (when a screen grows large) |
+| Feature barrel | feature root | `<feature>.dart` |
 | Layer barrels | per layer | `data/data.dart`, `domain/domain.dart`, `presentation/presentation.dart` |
 
 ### Layout rules
@@ -86,7 +98,7 @@ layer positions.
 ### Reference layout — `feature_example`
 
 ```
-features/feature_example/
+lib/features/feature_example/
 ├── feature_example.dart              # feature barrel — only the 3 layer barrels
 ├── data/
 │   ├── data.dart                     # data layer barrel (absolute package: paths)

@@ -31,7 +31,9 @@ def test_total_task_input_is_below_target(melos_session) -> None:
     # implementation waves).
     # 16773 -> 17178: wave-aware blocked protocol on post-understanding waves and
     # a directive implementation instruction.
-    assert total <= 17178
+    # 17178 -> 17298: mandatory feature layout policy in architecture.md and
+    # source-trust guardrail.
+    assert total <= 17298
     # Layout content exceeds phase-0; absolute cap until a trim pass elsewhere.
-    assert total <= PHASE0_TASK_TOKENS * 1.16
+    assert total <= PHASE0_TASK_TOKENS * 1.17
 
