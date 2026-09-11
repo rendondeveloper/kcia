@@ -42,6 +42,34 @@ def context_dir(repo_root: Path) -> Path:
     return repo_root / ".ai" / "context"
 
 
+# Per-task context files removed by ``clear_task_context`` / ``Session.abort``.
+# ``project.md`` is repo-level and is deliberately excluded.
+TASK_CONTEXT_FILES = (
+    "task.md",
+    "ticket.md",
+    "plan.md",
+    "decisions.md",
+    "current.md",
+    "milestones.md",
+)
+
+
+def clear_task_context(repo_root: Path) -> list[str]:
+    """Remove per-task context files. ``project.md`` is repo-level and is kept."""
+    root = context_dir(repo_root)
+    removed: list[str] = []
+    for name in TASK_CONTEXT_FILES:
+        path = root / name
+        if path.is_file():
+            path.unlink()
+            removed.append(name)
+    for path in sorted(root.glob("milestones-*.md")):
+        if path.is_file():
+            path.unlink()
+            removed.append(path.name)
+    return sorted(removed)
+
+
 def runs_dir(repo_root: Path) -> Path:
     return repo_root / ".ai" / "local" / "runs"
 
@@ -337,11 +365,12 @@ class Session:
         self.data.setdefault("injections", []).append(text)
         self.save()
 
-    def abort(self) -> None:
+    def abort(self) -> list[str]:
         close_cycle(self.repo_root)
         path = session_path(self.repo_root)
         if path.is_file():
             path.unlink()
+        return clear_task_context(self.repo_root)
 
 
 def _is_lock_alive(lock: dict[str, object]) -> bool:

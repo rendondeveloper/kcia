@@ -335,7 +335,7 @@ kcia work "fix the overflow on the profile screen"
 | `kcia work fetch` | re-fetch the current task's issue after it changed in Jira |
 | `kcia work answer "<text>"` | add context, or answer a blocked agent |
 | `kcia work show` | status, per-wave timings, tokens |
-| `kcia work abort` | throw the task away; the files it wrote stay on disk |
+| `kcia work abort` | throw the task away; clears the task's `.ai/context/` files while source files it wrote stay on disk |
 
 `--scope` matters on a monorepo: a task that only touches the API package does not pull in
 the Flutter profile bundles, and the prompt gets smaller.
@@ -524,8 +524,8 @@ kcia done
 clears the active session so the next `kcia work` can open a new branch. It then runs the
 post-commit workflow configured at init: push the current branch, or — under git flow —
 open a PR to the base branch / merge into it. Each of those steps is printed as it runs.
-To drop the task without committing, use `kcia work abort` (also closes the cycle; your
-uncommitted files stay on disk).
+To drop the task without committing, use `kcia work abort` (also closes the cycle, clears
+the task's `.ai/context/` files, and leaves your uncommitted source files on disk).
 
 The gate is declarative, not hardcoded. It comes from `requires_approval` in
 `control-plane/waves/waves.yaml`, so moving it — or adding a second one — is a data edit:

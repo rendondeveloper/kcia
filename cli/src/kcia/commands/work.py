@@ -801,8 +801,10 @@ def work_abort() -> None:
     except FileNotFoundError:
         typer.echo("No active task.")
         raise typer.Exit(code=1)
-    session.abort()
+    removed = session.abort()
     typer.echo("Task aborted.")
+    if removed:
+        typer.echo(f"Cleared {len(removed)} context file(s).")
 
 
 @app.command("list")

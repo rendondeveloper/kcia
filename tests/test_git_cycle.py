@@ -11,7 +11,7 @@ from kcia.git.autobranch import ensure_task_branch
 from kcia.git.cycle import close_cycle, is_cycle_open, load_cycle, open_cycle
 from kcia.git.flow import GITFLOW, GitFlow, save_flow
 from kcia.git.repo import current_branch
-from kcia.waves.session import Session, session_path
+from kcia.waves.session import TASK_CONTEXT_FILES, Session, context_dir, session_path
 
 
 def git(repo: Path, *args: str) -> None:
@@ -113,5 +113,39 @@ def test_abort_closes_cycle(repo: Path) -> None:
     ensure_task_branch(session)
     assert is_cycle_open(repo)
     session.abort()
+    assert not is_cycle_open(repo)
+    assert not session_path(repo).is_file()
+
+
+def test_abort_clears_task_context(repo: Path) -> None:
+    gitflow(repo)
+    session = Session.create(repo, text="add loader", mode="prompt", title="add loader")
+    ensure_task_branch(session)
+    ctx = context_dir(repo)
+    ctx.mkdir(parents=True, exist_ok=True)
+    for name in TASK_CONTEXT_FILES:
+        (ctx / name).write_text(f"{name}\n", encoding="utf-8")
+    (ctx / "milestones-flutter.md").write_text("chunk\n", encoding="utf-8")
+    (ctx / "project.md").write_text("repo facts\n", encoding="utf-8")
+
+    removed = session.abort()
+
+    assert not is_cycle_open(repo)
+    assert not session_path(repo).is_file()
+    for name in TASK_CONTEXT_FILES:
+        assert not (ctx / name).exists()
+    assert not (ctx / "milestones-flutter.md").exists()
+    assert (ctx / "project.md").read_text(encoding="utf-8") == "repo facts\n"
+    assert removed == sorted([*TASK_CONTEXT_FILES, "milestones-flutter.md"])
+
+
+def test_abort_succeeds_when_context_is_empty(repo: Path) -> None:
+    gitflow(repo)
+    session = Session.create(repo, text="add loader", mode="prompt", title="add loader")
+    ensure_task_branch(session)
+
+    removed = session.abort()
+
+    assert removed == []
     assert not is_cycle_open(repo)
     assert not session_path(repo).is_file()

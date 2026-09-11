@@ -3,6 +3,15 @@
 Two versions are tracked independently. CLI entries are headed `## X.Y.Z`; control-plane
 entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
 
+## Unreleased
+
+### CLI
+
+- `kcia work abort` now clears per-task `.ai/context/` files (`task.md`, `ticket.md`,
+  `plan.md`, `decisions.md`, `current.md`, `milestones.md`, and any `milestones-*.md`
+  chunks) so the next task does not inherit stale planner context. Repo-level `project.md`
+  is kept.
+
 ## 0.4.1 — 2026-08-14
 
 ### CLI
