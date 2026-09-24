@@ -151,3 +151,35 @@ def test_gitflow_merge_merges_into_base_and_deletes_the_task_branch(
     assert listed == ""
     assert not is_cycle_open(repo)
     assert not session_path(repo).is_file()
+
+
+def test_jira_done_selects_next_subtask_and_runs_existing_workflow(repo, monkeypatch) -> None:
+    from kcia.commands import jira as jira_commands
+    from kcia.integrations import jira_cycle as jira
+
+    add_origin(repo)
+    _current_branch_flow(repo)
+    def issue(key):
+        return jira.Issue(key=key, summary=f"Implement {key}", description=key,
+                          status="Open", category="new", priority="High", priority_rank=0)
+    snapshot = jira.Snapshot(parent=issue("PR-1"), subtasks=[issue("PR-2"), issue("PR-3")], complete=True)
+    monkeypatch.setattr(jira, "fetch", lambda *a: snapshot)
+    transitions = []
+    monkeypatch.setattr(jira, "transition", lambda *args: transitions.append(args[1:]))
+    session = jira_commands.select(repo, key="PR-1", subtask="PR-2")
+    for wave in session.waves.values():
+        wave["status"] = "completed"
+    session.save()
+    (repo / "src.txt").write_text("implemented\n")
+    monkeypatch.chdir(repo)
+    from types import SimpleNamespace
+    monkeypatch.setattr(jira_commands, "sys", SimpleNamespace(stdin=SimpleNamespace(isatty=lambda: True)))
+    monkeypatch.setattr(jira_commands.typer, "prompt", lambda *a, **kw: kw["default"])
+    executions = []
+    monkeypatch.setattr("kcia.commands.work._execute", lambda session, **kw: executions.append(session))
+    result = runner.invoke(app, ["done", "--yes"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert executions[0].task["ticket_key"] == "PR-3"
+    assert ("PR-2", "finish") in transitions
+    assert ("PR-1", "parent_finish") not in transitions
+    assert jira.load(repo)["delivered"] == ["PR-2"]

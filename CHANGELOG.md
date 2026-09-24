@@ -5,7 +5,23 @@ entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
 
 ## Unreleased
 
+## 0.23.0 — 2026-09-24
+
 ### CLI
+
+- Jira work cycles read the parent and all direct subtasks, sort pending subtasks by
+  priority, and offer an interactive selection with a default. `--subtask KEY`
+  supports explicit selection without an interactive terminal.
+- Each selected subtask runs the existing workflow with parent and sibling context.
+  `kcia done` synchronizes Jira status and returns to the next subtask selection.
+  Cycles can be paused and resumed, and parents close only after Jira confirms all
+  subtasks are complete.
+- Jira status destinations are configurable; PR workflows default to `In Review`.
+  Transition access is scoped to dedicated synchronization calls, while agent waves
+  retain read-only access. `sync_status: false` supports read-only cycles.
+- Persist closure progress so Git and Jira failures can be retried without repeating
+  completed commits or Git steps. Refresh, inspect, and abort Jira cycles through
+  the existing `work` subcommands.
 
 - `kcia work abort` now clears per-task `.ai/context/` files (`task.md`, `ticket.md`,
   `plan.md`, `decisions.md`, `current.md`, `milestones.md`, and any `milestones-*.md`

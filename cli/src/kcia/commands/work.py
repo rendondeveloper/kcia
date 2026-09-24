@@ -581,6 +581,7 @@ def work(
     scope: Optional[list[str]] = typer.Option(
         None, "--scope", help="Limit active profiles to these repo-relative paths."
     ),
+    subtask: Optional[str] = typer.Option(None, "--subtask", help="Select a pending Jira subtask explicitly."),
     fetch: Optional[bool] = typer.Option(
         None,
         "--fetch/--no-fetch",
@@ -626,6 +627,8 @@ def work(
     if "--stdin" in pending_options and not from_stdin:
         return
     if text and pending_options:
+        if "--subtask" in pending_options and subtask is None:
+            return
         if "--scope" in pending_options and not scope:
             return
         if "--profile" in pending_options and not profile:
@@ -649,6 +652,40 @@ def work(
 
     text = _resolve_input_text(text, file, from_stdin, required=False)
 
+    from kcia.integrations import jira_cycle as jira
+    from kcia.commands import jira as jira_commands
+    from kcia.waves.session import session_path
+
+    repo = find_repo_root()
+    try:
+        if repo and text is None and not session_path(repo).exists() and jira.load(repo):
+            selected = jira_commands.select(repo, subtask=subtask)
+            if selected:
+                _execute(selected, wave_id=wave, until=until, force=force, quiet=quiet, yes=yes)
+            state["_work_completed"] = True
+            return
+        if repo and text and fetch is not False and atlassian_available(repo) and classify_input(
+            text, load_manifest_raw(repo), ticket=ticket, prompt=prompt, issue_tracker_connected=True
+        ) == "ticket":
+            if scope:
+                _validate_scope(repo, scope)
+            selected = jira_commands.select(repo, key=text.strip(), subtask=subtask, profiles=profile, scope=scope)
+            if selected:
+                _execute(selected, wave_id=wave, until=until, force=force, quiet=quiet, yes=yes)
+            state["_work_completed"] = True
+            return
+        if subtask:
+            raise jira.JiraError("--subtask requires a connected Jira cycle.")
+        if repo and text is None and session_path(repo).exists():
+            active = Session.load(repo)
+            if active.data.get("done_checkpoint"):
+                raise jira.JiraError("Finish pending closure with `kcia done` before running more waves.")
+            if active.data.get("jira_cycle"):
+                jira_commands.start(repo)
+    except jira.JiraError as exc:
+        typer.echo(f"Jira: {exc}")
+        raise typer.Exit(code=1) from exc
+
     if text is None:
         session = _load_runnable_session()
         _execute(session, wave_id=wave, until=until, force=force, quiet=quiet, yes=yes)
@@ -660,6 +697,9 @@ def work(
         typer.echo("No git repository found. Initialize git or run from a repo root.")
         raise typer.Exit(code=1)
 
+    if jira.load(repo) and jira.load(repo).get("phase") != "complete":
+        typer.echo("Resume the Jira cycle with `kcia work`, or use `kcia work abort` first.")
+        raise typer.Exit(code=1)
     session = _create_task(
         repo,
         text,
@@ -684,6 +724,16 @@ def work_show(
     try:
         session = Session.load(repo)
     except FileNotFoundError as exc:
+        from kcia.integrations import jira_cycle as jira
+        cycle = jira.load(repo)
+        if cycle:
+            if as_json:
+                typer.echo(json.dumps({"jira_cycle": cycle}, indent=2))
+            else:
+                typer.echo(f"Jira parent: {cycle['parent']} ({cycle['phase']})")
+                typer.echo(f"Delivered: {', '.join(cycle['delivered']) or 'none'}")
+                typer.echo("Resume with `kcia work`.")
+            return
         typer.echo(str(exc))
         raise typer.Exit(code=1) from exc
     if as_json:
@@ -734,6 +784,21 @@ def work_fetch() -> None:
         typer.echo("This task is not a ticket. `work fetch` only applies to ticket mode.")
         raise typer.Exit(code=1)
 
+    if session.data.get("jira_cycle"):
+        from kcia.integrations import jira_cycle as jira
+        from kcia.waves.session import context_dir
+        try:
+            cycle = jira.load(repo)
+            snapshot = jira.fetch(repo, cycle["parent"])
+            selected = next((i for i in [snapshot.parent, *snapshot.subtasks] if i.key == ticket_key), None)
+            if selected is None:
+                raise jira.JiraError("Active subtask is no longer part of the parent.")
+            (context_dir(repo) / "ticket.md").write_text(jira.context(snapshot, selected), encoding="utf-8")
+            typer.echo("Refreshed parent and subtask context.")
+            return
+        except jira.JiraError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=1) from exc
     result = _fetch_with_progress(repo, ticket_key)
     if not result.ok:
         typer.echo(f"Could not fetch {ticket_key} — {result.error}")
@@ -799,8 +864,19 @@ def work_abort() -> None:
     try:
         session = Session.load(repo)
     except FileNotFoundError:
+        from kcia.integrations import jira_cycle as jira
+        if jira.load(repo):
+            jira.path(repo).unlink(missing_ok=True)
+            typer.echo("Jira cycle aborted. Remote statuses were left unchanged.")
+            return
         typer.echo("No active task.")
         raise typer.Exit(code=1)
+    if session.data.get("done_checkpoint"):
+        typer.echo("Closure is pending; resume with `kcia done` before aborting.")
+        raise typer.Exit(code=1)
+    from kcia.integrations import jira_cycle as jira
+    if session.data.get("jira_cycle"):
+        jira.path(repo).unlink(missing_ok=True)
     removed = session.abort()
     typer.echo("Task aborted.")
     if removed:

@@ -865,8 +865,9 @@ already had. This only controls *classification*: with `project_keys: [PROJ]`, a
 
 ### What the agent may do with Jira
 
-The guardrails shipped in `control-plane/guardrails/policies.yaml` allow reading issues and
-comments, and forbid commenting and transitioning:
+For agent waves, the guardrails in `control-plane/guardrails/policies.yaml` allow reading
+issues and comments, and forbid commenting and transitioning. The dedicated CLI cycle
+synchronizer described below has separate, scoped transition access:
 
 ```yaml
 jira:
@@ -1421,3 +1422,52 @@ Being honest about what the code does not yet do:
 | Git | `branch start/base`, `done` — git-flow branching and the confirmed commits that close a task |
 
 **Not yet implemented** — these commands exit 1: `kcia sync`, `kcia auth`.
+
+### Jira subtask work cycles
+
+With Atlassian enabled, `kcia work PROJ-123` reads the issue and every direct
+subtask. Pending subtasks are ordered by Jira priority, with the issue key as a
+stable tie-breaker. An interactive selector defaults to the first pending item;
+enter `0` to pause. Without a terminal, use `kcia work --subtask PROJ-124` to
+select explicitly. `--yes` does not choose a subtask for you.
+
+The selected subtask is the implementation scope. The parent and sibling
+subtasks provide context. Every selection starts a fresh wave session and clears
+previous task context. Issues without subtasks start the existing workflow
+directly. `kcia work fetch` refreshes the whole context.
+
+Starting work moves the issue (and parent) to an available in-progress state.
+After the workflow, `kcia done` commits and performs the configured Git workflow,
+then updates Jira and returns to the selector. With PR-based Git flow the default
+finish status is `In Review`; otherwise it is a state in Jira's done category.
+Configure exact status names for your project when these defaults do not fit:
+
+```yaml
+integrations:
+  jira:
+    enabled: true
+    sync_status: true
+    states:
+      start: In Progress
+      finish: In Review
+      parent_finish: Done
+```
+
+KCIA only uses available direct transitions and verifies the resulting state.
+Ambiguous transitions or required fields stop synchronization with an error.
+The parent closes only when a fresh Jira read shows all subtasks in the done
+category. Delivered subtasks awaiting review are excluded from the next selector;
+run `kcia work` after review to refresh and close the parent. Set
+`sync_status: false` for a read-only cycle. `--no-fetch` retains the manual ticket
+context workflow without Jira orchestration.
+
+Progress lives in `.ai/local/jira-cycle.json`, independently of individual work
+sessions. If remote closure fails, retry `kcia done`: saved commits are not
+created again, and successful Git completion is not repeated after a Jira failure.
+`kcia done --dry-run` never changes Jira. `kcia work abort` discards a cycle without
+reverting Jira states. A pending closure must finish before aborting.
+
+Jira transition access is granted only to the dedicated synchronization call;
+the planner's normal MCP allowlist remains read-only. Claude enforces the per-call
+allowlist; Cursor and OpenCode rely on provider/account permissions. KCIA still
+uses the provider's login and does not store Atlassian credentials.

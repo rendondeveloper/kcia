@@ -23,6 +23,7 @@ from kcia.git.repo import (
     checkout,
     commit as git_commit,
     current_branch,
+    branch_exists,
     delete_local_branch,
     delete_remote_branch,
     fetch,
@@ -137,6 +138,20 @@ def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> None:
             "Install it (https://cli.github.com) and re-run, or open the PR yourself."
         )
         raise typer.Exit(code=1)
+    existing = subprocess.run(
+        [GH_BIN, "pr", "list", "--head", branch, "--state", "open", "--json", "url,baseRefName"],
+        cwd=repo, capture_output=True, text=True,
+    )
+    if existing.returncode == 0:
+        import json
+        try:
+            matches = json.loads(existing.stdout)
+        except ValueError:
+            matches = []
+        for match in matches if isinstance(matches, list) else []:
+            if not base or match.get("baseRefName") == base:
+                typer.echo(match["url"])
+                return
     args = [GH_BIN, "pr", "create", "--title", title, "--body", "", "--head", branch]
     if base:
         args += ["--base", base]
@@ -149,10 +164,17 @@ def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> None:
         typer.echo(url)
 
 
-def _run_step(label: str, action) -> None:
+def _run_step(label: str, action, *, repo: Path | None = None) -> None:
+    session = _session(repo) if repo else None
+    checkpoint = session.data.get("done_checkpoint") if session else None
+    if checkpoint and label in checkpoint.get("git_steps", []):
+        return
     typer.echo(label)
     with StepProgress(label):
         action()
+    if checkpoint is not None:
+        checkpoint.setdefault("git_steps", []).append(label)
+        session.save()
 
 
 def _remote_name(repo: Path) -> str:
@@ -168,7 +190,7 @@ def _remote_name(repo: Path) -> str:
 def _push_branch(repo: Path, branch: str, *, remote: str) -> None:
     _run_step(
         f"Pushing `{branch}`",
-        lambda: git_push(repo, branch, remote=remote),
+        lambda: git_push(repo, branch, remote=remote), repo=repo,
     )
     typer.echo(f"Pushed `{branch}`.")
 
@@ -201,25 +223,25 @@ def _finish_gitflow_merge(repo: Path, branch: str, base: str) -> None:
         )
         raise typer.Exit(code=1)
     remote = _remote_name(repo)
-    _run_step(f"Fetching `{remote}`", lambda: fetch(repo, remote))
+    _run_step(f"Fetching `{remote}`", lambda: fetch(repo, remote), repo=repo)
     _run_step(f"Checking out `{base}`", lambda: checkout(repo, base))
-    _run_step(f"Pulling `{remote}/{base}`", lambda: pull(repo, base, remote=remote))
+    _run_step(f"Pulling `{remote}/{base}`", lambda: pull(repo, base, remote=remote), repo=repo)
     _run_step(
         f"Merging `{branch}` into `{base}`",
-        lambda: merge_no_ff(repo, branch),
+        lambda: merge_no_ff(repo, branch), repo=repo,
     )
     _run_step(
         f"Pushing `{base}`",
-        lambda: git_push(repo, base, remote=remote),
+        lambda: git_push(repo, base, remote=remote), repo=repo,
     )
     _run_step(
         f"Deleting `{branch}` locally",
-        lambda: delete_local_branch(repo, branch),
+        lambda: delete_local_branch(repo, branch) if branch_exists(repo, branch) else None, repo=repo,
     )
     if remote_branch_exists(repo, branch, remote=remote):
         _run_step(
             f"Deleting `{branch}` on `{remote}`",
-            lambda: delete_remote_branch(repo, branch, remote=remote),
+            lambda: delete_remote_branch(repo, branch, remote=remote), repo=repo,
         )
     typer.echo(f"Merged `{branch}` into `{base}`.")
 
@@ -243,6 +265,33 @@ def _after_commit(
         _finish_gitflow_pr(repo, branch, title, base)
         return
     _finish_current_branch(repo, branch)
+
+
+def _complete_saved_done(repo: Path, session: Session) -> None:
+    """Retry remote completion without creating the commits again."""
+    from kcia.commands import jira as jira_commands
+    from kcia.integrations.jira_cycle import JiraError
+
+    checkpoint = session.data["done_checkpoint"]
+    try:
+        if not checkpoint.get("git_finished"):
+            _after_commit(repo, branch=checkpoint["branch"], title=checkpoint["title"],
+                          session_base=checkpoint.get("base"))
+            refreshed = Session.load(repo)
+            checkpoint.update(refreshed.data.get("done_checkpoint", {}))
+            checkpoint["git_finished"] = True
+            session.save()
+        if session.data.get("jira_cycle") and not checkpoint.get("jira_finished"):
+            jira_commands.finish(repo, session)
+            checkpoint["jira_finished"] = True
+            session.save()
+        close_cycle(repo)
+        session_path(repo).unlink(missing_ok=True)
+        if session.data.get("jira_cycle"):
+            jira_commands.continue_cycle(repo)
+    except (GitError, JiraError) as exc:
+        typer.echo(f"Closure pending: {exc}. Resume with `kcia done` (or `kcia work` after closure).")
+        raise typer.Exit(code=1) from exc
 
 
 def commit_command(
@@ -272,6 +321,18 @@ def commit_command(
     """
     repo = load_repo()
     session = _session(repo)
+    if session and session.is_locked():
+        typer.echo("A workflow is running; wait for it before closing the task.")
+        raise typer.Exit(code=1)
+    if session and session.data.get("done_checkpoint"):
+        if dry_run:
+            typer.echo("Dry run — pending closure would be retried; no changes made.")
+            return
+        _complete_saved_done(repo, session)
+        return
+    if session and session.data.get("jira_cycle") and _unfinished_waves(session):
+        typer.echo("Finish all workflow waves before closing a Jira task.")
+        raise typer.Exit(code=1)
     plan = plan_metadata.load(repo)
 
     resolved_subject = (
@@ -351,18 +412,18 @@ def commit_command(
             commit_sha=written[-1][0],
             task_id=task_id,
         )
-        close_cycle(repo)
-        session_file = session_path(repo)
-        if session_file.is_file():
-            session_file.unlink()
         session_base = session.task.get("base_branch") if session is not None else None
-        try:
-            _after_commit(
-                repo,
-                branch=branch,
-                title=written[-1][1],
-                session_base=session_base,
-            )
-        except GitError as exc:
-            typer.echo(str(exc))
-            raise typer.Exit(code=1) from exc
+        if session is not None:
+            session.data["done_checkpoint"] = {
+                "branch": branch, "title": written[-1][1], "base": session_base,
+                "git_finished": False, "jira_finished": False,
+            }
+            session.save()
+            _complete_saved_done(repo, session)
+        else:
+            try:
+                _after_commit(repo, branch=branch, title=written[-1][1], session_base=session_base)
+                close_cycle(repo)
+            except GitError as exc:
+                typer.echo(str(exc))
+                raise typer.Exit(code=1) from exc
