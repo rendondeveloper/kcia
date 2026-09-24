@@ -225,3 +225,50 @@ def test_existing_task_is_not_overwritten(repo, monkeypatch):
         commands.select(repo, key="PR-1")
     assert Session.load(repo).task["id"] == existing.task["id"]
     assert jira.load(repo) is None
+
+
+@pytest.mark.parametrize("text", [
+    '{"parent": {"key": "PR-1"}}',
+    '```json\n{"parent": {"key": "PR-1"}}\n```',
+    'I retrieved the issue.\n```json\n{"parent": {"key": "PR-1"}}\n```',
+    'I retrieved the issue.\n{"parent": {"key": "PR-1"}}',
+])
+def test_parse_jira_response_with_provider_preamble(text):
+    assert jira.parse_response(text) == {"parent": {"key": "PR-1"}}
+
+
+@pytest.mark.parametrize("text", [
+    '', 'Please authenticate Atlassian first.', '{"parent": {"key": "PR-1"}',
+    '{"parent": {}}\n{"error": "failed"}',
+    '```json\n{"parent": {}}\n```\n```json\n{"error":"failed"}\n```',
+    '[]',
+])
+def test_invalid_jira_response_has_actionable_error(text):
+    with pytest.raises(jira.JiraError) as error:
+        jira.parse_response(text)
+    assert "Expecting value" not in str(error.value)
+
+
+def test_jira_error_is_reported_without_python_dict_wrapper():
+    with pytest.raises(jira.JiraError, match="^Needs authentication$"):
+        jira.parse_response('{"error":"Needs authentication"}')
+
+
+def test_real_provider_shape_preserves_criteria_and_empty_comments():
+    payload = snapshot(issue("PR-2")).model_dump()
+    for entry in [payload["parent"], *payload["subtasks"]]:
+        entry["acceptance_criteria"] = ["Keep old data.", "Validate boundaries."]
+        entry["comments"] = []
+    parsed = jira.Snapshot.model_validate(payload)
+    assert parsed.parent.acceptance_criteria == "- Keep old data.\n- Validate boundaries."
+    assert parsed.subtasks[0].comments == ""
+    assert "Validate boundaries." in jira.context(parsed, parsed.subtasks[0])
+
+
+def test_optional_null_text_is_empty_but_object_fields_are_rejected():
+    payload = issue("PR-1").model_dump()
+    payload.update(acceptance_criteria=None, comments=None)
+    assert jira.Issue.model_validate(payload).comments == ""
+    payload["comments"] = [{"unexpected": "shape"}]
+    with pytest.raises(ValueError):
+        jira.Issue.model_validate(payload)
