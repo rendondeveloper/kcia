@@ -58,6 +58,15 @@ plan.
    when it falls under a manifest root? Recommended: yes, with the same prefix containment. `_workspace_dirs_for_profile`
    already falls back to `repo_root` for non-`/**` shapes, so edit scope isn't widened beyond today's behavior.
 
+### Answers
+
+The user asked to implement without answering explicitly, so both recommended answers were adopted:
+
+1. Yes. Validation runs at the end of `analysis`. When the block is invalid, the planner re-plans automatically with the
+   error fed back as `## Previous validation error` (up to 2 extra attempts). Only if it is still invalid does the wave
+   fail, before the `implementation` approval gate.
+2. Yes. Literal paths nested under a `<dir>/**` manifest root are accepted.
+
 ## Proposed plan
 
 ### 1. Containment instead of equality — `cli/src/kcia/waves/plan_execution.py`
@@ -107,6 +116,26 @@ plan.
 Bump `VERSION` in `cli/src/kcia/__init__.py` as a **patch** (0.23.0 → 0.23.1): it relaxes an over-strict validation and
 moves an existing check earlier, with no new capability and no breaking change. If `control-plane` prompt edits require
 it, bump `control-plane/VERSION` independently (patch).
+
+## Implementation notes
+
+- `plan_execution.py`: added `_root_covered` / `_normalize_root` and a `validate_plan_execution(plan_text, manifest)`
+  helper that bundles the three checks. The new error message lists the manifest roots and how to recover.
+- `runner.py`: added `_execution_block_error` for the `analysis` wave, plus a re-plan loop capped by
+  `_EXECUTION_BLOCK_RETRIES = 2` inside `run_wave`. The multi-profile backstop is unchanged.
+- `analysis.md.j2`: kept to two lines to protect the prompt budget. `tests/test_optimization_budget.py` rose
+  17298 → 17337 (+39 tokens, documented inline; still under the 1.17× phase-0 cap of 17355).
+- Tests: 11 new `plan_execution` cases (nested, sibling, `..`, absolute, globs, the sport_monitor regression, the error
+  message, unknown profile) and 2 runner cases (self-healing re-plan; failure after retries before approval). Full
+  suite: 458 passed.
+- Verified the real `sport_monitor/.ai/context/plan.md` now validates.
+
+## Version decision
+
+- `cli/src/kcia/__init__.py`: 0.23.0 → **0.23.1 (patch)**. It relaxes an over-strict validation and moves an existing
+  check earlier. No new capability, nothing breaking.
+- `control-plane/VERSION`: 1.9.0 → **1.9.1 (patch)**. Prompt wording clarification only, matching precedent
+  (ea4887b bumped 1.8.0 → 1.8.1 for a prompt-only change).
 
 ## Workaround for the stuck `sport_monitor` session (no kcia change needed)
 

@@ -33,7 +33,9 @@ def test_total_task_input_is_below_target(melos_session) -> None:
     # a directive implementation instruction.
     # 17178 -> 17298: mandatory feature layout policy in architecture.md and
     # source-trust guardrail.
-    assert total <= 17298
+    # 17298 -> 17337: analysis wave states the execution-roots contract (roots
+    # may narrow manifest roots, never widen) so the block validates up front.
+    assert total <= 17337
     # Layout content exceeds phase-0; absolute cap until a trim pass elsewhere.
     assert total <= PHASE0_TASK_TOKENS * 1.17
 

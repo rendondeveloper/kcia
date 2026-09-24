@@ -126,10 +126,85 @@ def test_validate_execution_against_manifest_checks_roots_subset() -> None:
     executions = [ProfileExecution("backend-dart", roots=["services/api/**"])]
     validate_execution_against_manifest(executions, manifest)
 
-    with pytest.raises(ExecutionBlockError, match="subset"):
+    with pytest.raises(ExecutionBlockError, match="not inside the manifest roots"):
         validate_execution_against_manifest(
             [ProfileExecution("backend-dart", roots=["services/other/**"])],
             manifest,
+        )
+
+
+def _manifest(roots: list[str]) -> Manifest:
+    return Manifest.model_validate(
+        {
+            "schema_version": 2,
+            "project": {"name": "x", "default_profile": "backend-dart"},
+            "profiles": [{"id": "backend-dart", "roots": roots}],
+            "dependencies": [],
+        }
+    )
+
+
+@pytest.mark.parametrize("root", [
+    "packages/models/**",
+    "packages/models/test/fixtures/**",
+    "packages/models/lib/src/model.dart",
+    "./packages/models/test/**",
+    "packages/models/",
+])
+def test_validate_execution_accepts_roots_nested_in_manifest_root(root: str) -> None:
+    validate_execution_against_manifest(
+        [ProfileExecution("backend-dart", roots=[root])],
+        _manifest(["packages/models/**"]),
+    )
+
+
+@pytest.mark.parametrize("root", [
+    "packages/models_extra/**",
+    "packages/**",
+    "packages/models/../secrets/**",
+    "/etc/**",
+    "packages/models/*.dart",
+    "**",
+])
+def test_validate_execution_rejects_roots_outside_manifest_root(root: str) -> None:
+    with pytest.raises(ExecutionBlockError, match="Outside"):
+        validate_execution_against_manifest(
+            [ProfileExecution("backend-dart", roots=[root])],
+            _manifest(["packages/models/**"]),
+        )
+
+
+def test_validate_execution_accepts_anything_under_whole_repo_manifest_root() -> None:
+    # Regression: sport_monitor's backend-dart owns `**`; the planner narrowed it.
+    manifest = _manifest([
+        "**",
+        "apps/sport_monitor_cloud_functions/functions/**",
+        "packages/sport_monitor_models/**",
+    ])
+    validate_execution_against_manifest(
+        [ProfileExecution("backend-dart", roots=[
+            "docs/adr/**",
+            "packages/sport_monitor_models/test/fixtures/live_tracking/**",
+        ])],
+        manifest,
+    )
+
+
+def test_validate_execution_error_names_manifest_roots_and_recovery() -> None:
+    with pytest.raises(ExecutionBlockError) as error:
+        validate_execution_against_manifest(
+            [ProfileExecution("backend-dart", roots=["docs/**"])],
+            _manifest(["packages/models/**"]),
+        )
+    assert "['packages/models/**']" in str(error.value)
+    assert "kcia work retry analysis" in str(error.value)
+
+
+def test_validate_execution_still_rejects_unknown_profile() -> None:
+    with pytest.raises(ExecutionBlockError, match="Unknown profile id"):
+        validate_execution_against_manifest(
+            [ProfileExecution("mobile-flutter", roots=["apps/**"])],
+            _manifest(["**"]),
         )
 
 

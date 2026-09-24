@@ -45,10 +45,14 @@ from kcia.waves.plan_execution import (
     validate_disjoint_roots,
     validate_execution_against_manifest,
     validate_execution_dependencies,
+    validate_plan_execution,
 )
 
 
 _MULTI_PROFILE_WAVES = {"implementation", "documentation-final"}
+# Re-plan attempts when `analysis` writes an execution block the runner would
+# later reject; failing here keeps the error ahead of the implementation gate.
+_EXECUTION_BLOCK_RETRIES = 2
 
 
 @dataclass
@@ -290,6 +294,7 @@ def run_wave(
             )
 
         premature_block_retries = 0
+        execution_block_retries = 0
         current_validation_error = validation_error
         usage = _Usage()
         runner = provider_runner or run_provider
@@ -366,6 +371,17 @@ def run_wave(
                 current_validation_error = format_premature_block_retry(
                     reason, session.repo_root
                 )
+                session.set_wave_status(wave_id, "running", attempts=attempts)
+                session.save()
+                continue
+
+            execution_error = _execution_block_error(wave, session, result.output_text)  # type: ignore[attr-defined]
+            if execution_error:
+                if execution_block_retries >= _EXECUTION_BLOCK_RETRIES:
+                    raise RuntimeError(execution_error)
+                execution_block_retries += 1
+                attempts += 1
+                current_validation_error = execution_error
                 session.set_wave_status(wave_id, "running", attempts=attempts)
                 session.save()
                 continue
@@ -510,6 +526,20 @@ def _workspace_dirs_for_profile(repo_root: Path, roots: list[str]) -> list[Path]
     # Keep `.ai/` last so our default `cwd` points at the code root.
     code_dirs = sorted(code_workspace)
     return [*code_dirs, repo_root / ".ai"]
+
+
+def _execution_block_error(wave: WaveDefinition, session: Session, output_text: str) -> str | None:
+    """Reason the plan's execution block would be rejected at implementation time."""
+    if wave.id != "analysis":
+        return None
+    manifest = load_manifest(session.repo_root)
+    if manifest is None:
+        return None
+    try:
+        validate_plan_execution(output_text, manifest)
+    except ExecutionBlockError as exc:
+        return f"invalid execution block in plan.md: {exc}"
+    return None
 
 
 def _parse_plan_execution_or_empty(session: Session) -> list[ProfileExecution]:

@@ -98,8 +98,9 @@ def validate_execution_against_manifest(
 ) -> None:
     """Validate that profile ids and roots belong to the manifest.
 
-    The check is conservative: we require every declared `roots` string to be a
-    direct element of the manifest `roots` list.
+    Each declared root must equal a manifest root of that profile or lie inside
+    one (see `_root_covered`): plans may narrow a profile's territory, never
+    widen it.
     """
     manifest_map = {entry.id: entry for entry in manifest.profiles}
 
@@ -109,12 +110,59 @@ def validate_execution_against_manifest(
                 f"Unknown profile id in execution block: {exec_entry.profile_id!r}"
             )
         manifest_entry = manifest_map[exec_entry.profile_id]
-        missing = [r for r in exec_entry.roots if r not in manifest_entry.roots]
+        missing = [
+            r for r in exec_entry.roots if not _root_covered(r, manifest_entry.roots)
+        ]
         if missing:
             raise ExecutionBlockError(
-                f"Execution roots for {exec_entry.profile_id!r} are not a subset "
-                f"of the manifest roots. Missing: {missing!r}"
+                f"Execution roots for {exec_entry.profile_id!r} are not inside "
+                f"the manifest roots {manifest_entry.roots!r}. Outside: {missing!r}. "
+                "Fix the execution block in .ai/context/plan.md and run `kcia work` "
+                "again, or re-plan with `kcia work retry analysis`."
             )
+
+
+def _normalize_root(root: str) -> str:
+    root = root.strip()
+    while root.startswith("./"):
+        root = root[2:]
+    return root.rstrip("/") if root not in {"/", ""} else root
+
+
+def _root_covered(root: str, manifest_roots: list[str]) -> bool:
+    """True when `root` equals a manifest root or lies inside a `<dir>/**` one.
+
+    Only `<dir>/**` and literal paths are understood; any other glob shape must
+    match a manifest root exactly. Absolute and `..` paths are never covered.
+    """
+    if root in manifest_roots:
+        return True
+    normalized = _normalize_root(root)
+    if not normalized or normalized.startswith("/") or ".." in normalized.split("/"):
+        return False
+    path = normalized[: -len("/**")] if normalized.endswith("/**") else normalized
+    if any(char in path for char in "*?[]"):
+        return False
+    for manifest_root in manifest_roots:
+        candidate = _normalize_root(manifest_root)
+        if candidate in {".", "**"}:
+            return True
+        if not candidate.endswith("/**"):
+            continue
+        prefix = candidate[: -len("/**")]
+        if path == prefix or path.startswith(prefix + "/"):
+            return True
+    return False
+
+
+def validate_plan_execution(plan_text: str, manifest: Manifest) -> None:
+    """Run every execution-block check the runner applies before fanning out."""
+    executions = parse_execution_block(plan_text)
+    if not executions:
+        return
+    validate_execution_against_manifest(executions, manifest)
+    validate_disjoint_roots(executions)
+    validate_execution_dependencies(executions)
 
 
 def _root_prefix(pattern: str) -> str | None:

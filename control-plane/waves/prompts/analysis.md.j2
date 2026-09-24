@@ -39,7 +39,8 @@ execution:
       summary: "<what this profile must do>"
       depends_on: [<profile_id>]
 ```
-Use only real profile ids from `.ai/manifest.yaml`.
+Use only real profile ids from `.ai/manifest.yaml`; omit the block for a single profile.
+Each root must be one of that profile's manifest roots or a relative `<dir>/**` inside one (narrow, never widen); roots of different profiles must not overlap.
 
 Dependency rules:
 - Default to no `depends_on` (full parallel execution).

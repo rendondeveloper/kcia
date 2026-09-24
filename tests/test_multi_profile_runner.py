@@ -268,3 +268,65 @@ def test_single_profile_execution_block_forwards_progress(
     assert isinstance(seen[0], ToolCallStart)
     assert seen[0].name == "Read"
     assert seen[0].profile_id == "backend-dart"
+
+
+def _plan_with_roots(roots: str) -> str:
+    return f"""# Plan
+
+Scope the API change.
+
+```yaml
+execution:
+  profiles:
+    - id: backend-dart
+      roots: {roots}
+      summary: "api change"
+```
+"""
+
+
+def _analysis_session(repo: Path) -> Session:
+    session = Session.create(repo, text="change the api", mode="prompt")
+    session.set_wave_status("understanding", "completed")
+    session.save()
+    return Session.load(repo)
+
+
+def test_analysis_replans_when_execution_block_is_invalid(multi_profile_repo: Path) -> None:
+    session = _analysis_session(multi_profile_repo)
+    prompts: list[str] = []
+    outputs = [
+        _plan_with_roots('["somewhere/else/**"]'),
+        _plan_with_roots('["packages/api/lib/**"]'),
+    ]
+
+    def runner(_adapter, req, **_kwargs):
+        prompts.append(req.prompt)
+        return RunResult(output_text=outputs[len(prompts) - 1], exit_code=0)
+
+    result = run_wave("analysis", session, force=True, provider_runner=runner, skip_approval=True)
+
+    assert result.status == "completed"
+    assert len(prompts) == 2
+    assert "invalid execution block" in prompts[1]
+    assert "somewhere/else/**" in prompts[1]
+    plan = (context_dir(multi_profile_repo) / "plan.md").read_text(encoding="utf-8")
+    assert "packages/api/lib/**" in plan
+
+
+def test_analysis_fails_before_approval_when_execution_block_stays_invalid(
+    multi_profile_repo: Path,
+) -> None:
+    session = _analysis_session(multi_profile_repo)
+    calls: list[str] = []
+
+    def runner(_adapter, req, **_kwargs):
+        calls.append(req.prompt)
+        return RunResult(output_text=_plan_with_roots('["somewhere/else/**"]'), exit_code=0)
+
+    result = run_wave("analysis", session, force=True, provider_runner=runner, skip_approval=True)
+
+    assert result.status == "failed"
+    assert len(calls) == 3
+    assert "invalid execution block" in (result.error or "")
+    assert Session.load(multi_profile_repo).wave_status("analysis") == "failed"
