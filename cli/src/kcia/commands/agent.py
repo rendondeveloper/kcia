@@ -11,9 +11,12 @@ from kcia.config import (
     AgentScope,
     add_agent_fallback,
     model_in_catalog,
+    pin_agent,
     resolve_agents,
     set_agent,
+    set_agent_active_target,
     swap_agents,
+    unpin_agent,
 )
 from kcia.paths import find_repo_root
 from kcia.providers.catalog import load_catalog
@@ -24,6 +27,7 @@ fallback_app = typer.Typer(help="Manage ordered fallback agents.", no_args_is_he
 app.add_typer(fallback_app, name="fallback")
 
 Role = Literal["planner", "builder"]
+SwitchTarget = Literal["primary", "fallback"]
 
 
 @app.command("show")
@@ -40,6 +44,8 @@ def agent_show(
                 "effort": item.effort,
                 "origin": item.origin,
                 "automatic": item.automatic,
+                "active_index": item.active_index,
+                "manual_pin": item.manual_pin,
                 "fallbacks": [
                     {
                         "provider": fallback.provider,
@@ -64,6 +70,8 @@ def agent_show(
             typer.echo(f"  effort: {item.effort}")
         typer.echo(f"  origin: {item.origin}")
         typer.echo(f"  automatic routing: {'on' if item.automatic else 'off'}")
+        typer.echo(f"  active target: {_active_label(item)}")
+        typer.echo(f"  manual pin: {'on' if item.manual_pin else 'off'}")
         if item.fallbacks:
             typer.echo("  fallbacks:")
             for index, fallback in enumerate(item.fallbacks, start=1):
@@ -140,6 +148,88 @@ def agent_swap(
         raise typer.Exit(code=1)
     swap_agents(scope=scope, repo_root=repo_root)
     typer.echo(f"Swapped planner and builder in {scope} config.")
+
+
+@app.command("status")
+def agent_status(
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON."),
+) -> None:
+    agent_show(as_json=as_json)
+
+
+@app.command("switch")
+def agent_switch(
+    role: Role = typer.Argument(..., help="Agent role: planner or builder."),
+    target: SwitchTarget = typer.Option(
+        ...,
+        "--to",
+        help="Switch to primary or fallback.",
+    ),
+    index: int = typer.Option(
+        1,
+        "--index",
+        help="One-based fallback index when --to fallback.",
+    ),
+    scope: AgentScope = typer.Option(
+        "global",
+        "--scope",
+        help="Persist globally or in the current repo.",
+    ),
+) -> None:
+    repo_root = find_repo_root() if scope == "repo" else None
+    if scope == "repo" and repo_root is None:
+        typer.echo("No git repository found; cannot use --scope repo.")
+        raise typer.Exit(code=1)
+    active_index = 0 if target == "primary" else index
+    try:
+        set_agent_active_target(
+            role,
+            active_index=active_index,
+            scope=scope,
+            repo_root=repo_root,
+        )
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Switched {role} to {_target_label(active_index)} in {scope} config.")
+
+
+@app.command("pin")
+def agent_pin(
+    role: Role = typer.Argument(..., help="Agent role: planner or builder."),
+    scope: AgentScope = typer.Option(
+        "global",
+        "--scope",
+        help="Persist globally or in the current repo.",
+    ),
+) -> None:
+    repo_root = find_repo_root() if scope == "repo" else None
+    if scope == "repo" and repo_root is None:
+        typer.echo("No git repository found; cannot use --scope repo.")
+        raise typer.Exit(code=1)
+    try:
+        pin_agent(role, scope=scope, repo_root=repo_root)
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Pinned {role} to its active target in {scope} config.")
+
+
+@app.command("unpin")
+def agent_unpin(
+    role: Role = typer.Argument(..., help="Agent role: planner or builder."),
+    scope: AgentScope = typer.Option(
+        "global",
+        "--scope",
+        help="Persist globally or in the current repo.",
+    ),
+) -> None:
+    repo_root = find_repo_root() if scope == "repo" else None
+    if scope == "repo" and repo_root is None:
+        typer.echo("No git repository found; cannot use --scope repo.")
+        raise typer.Exit(code=1)
+    unpin_agent(role, scope=scope, repo_root=repo_root)
+    typer.echo(f"Unpinned {role} in {scope} config.")
 
 
 @fallback_app.command("add")
@@ -330,3 +420,13 @@ def agent_models(
             "Update control-plane/providers/catalog.yaml."
         )
         raise typer.Exit(code=1)
+
+
+def _active_label(item) -> str:
+    return _target_label(item.active_index)
+
+
+def _target_label(active_index: int) -> str:
+    if active_index == 0:
+        return "primary"
+    return f"fallback {active_index}"

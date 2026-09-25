@@ -60,9 +60,10 @@ class ExecutionCoordinator:
         should_cancel: Callable[[], bool] | None = None,
     ) -> CoordinatedRun:
         targets = targets_for_route(route)
-        current = targets[0]
+        active_index = getattr(route, "active_index", 0) or 0
+        current = targets[active_index] if 0 <= active_index < len(targets) else targets[0]
         attempts = 0
-        switched = False
+        switched = current != targets[0]
 
         while True:
             adapter = self.adapter_factory(current.provider)

@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
 from kcia.config import AgentSetting, ResolvedAgent
+from kcia.execution.coordinator import ExecutionCoordinator
 from kcia.execution.models import AgentTarget, HandoffRecord
 from kcia.execution.quota import QuotaSnapshot, QuotaStore, QuotaWindow
 from kcia.execution.routing import RoutingPolicy
-from kcia.providers.base import ProviderFailure, ProviderFailureKind
+from kcia.providers.base import (
+    ProviderCapabilities,
+    ProviderFailure,
+    ProviderFailureKind,
+    RunRequest,
+    RunResult,
+)
 
 
 NOW = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
@@ -157,3 +166,63 @@ def test_handoff_prompt_delta_contains_observable_state_only() -> None:
     assert "Objective: Fix failing tests" in text
     assert "Updated catalog" in text
     assert "Run full provider tests" in text
+
+
+def test_coordinator_starts_from_active_fallback_index() -> None:
+    route = ResolvedAgent(
+        role="builder",
+        provider="cursor",
+        model="composer-2.5",
+        effort=None,
+        origin="repo",
+        active_index=1,
+        manual_pin=True,
+        fallbacks=(
+            AgentSetting(
+                provider="opencode",
+                model="opencode-go/glm-5.3-flash",
+                billing_profile="opencode-go",
+            ),
+        ),
+    )
+    captured_models: list[str] = []
+
+    def adapter_factory(provider: str):
+        return SimpleNamespace(
+            capabilities=ProviderCapabilities(
+                supports_streaming=True,
+                supports_sessions=True,
+                supports_effort=True,
+                supports_tool_restriction=False,
+                supports_mcp_config=False,
+            )
+        )
+
+    def make_request(target, adapter):
+        return RunRequest(
+            prompt="p",
+            model=target.model,
+            allow_edits=False,
+            stream=True,
+            workspace_dirs=[],
+            session_id=None,
+            resume=False,
+            effort=None,
+            allowed_tools=None,
+            disallowed_tools=None,
+            cwd=Path("/tmp"),
+        )
+
+    def runner(adapter, req, **kwargs):
+        captured_models.append(req.model)
+        return RunResult(output_text="ok")
+
+    result = ExecutionCoordinator(
+        policy=RoutingPolicy(automatic=True),
+        runner=runner,
+        adapter_factory=adapter_factory,
+    ).run(route, make_request, operation_id="test")
+
+    assert result.target.model == "opencode-go/glm-5.3-flash"
+    assert result.switched is True
+    assert captured_models == ["opencode-go/glm-5.3-flash"]

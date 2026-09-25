@@ -13,9 +13,12 @@ from kcia.config import (
     add_agent_fallback,
     load_global_config,
     load_repo_agents,
+    pin_agent,
     resolve_agents,
     set_agent,
+    set_agent_active_target,
     swap_agents,
+    unpin_agent,
 )
 from kcia.providers.base import RunRequest
 from kcia.providers.claude import ClaudeAdapter
@@ -204,6 +207,28 @@ def test_agent_fallback_route_is_persisted_and_resolved(
     assert resolved["planner"].provider == "claude"
     assert resolved["planner"].fallbacks[0].provider == "opencode"
     assert resolved["planner"].fallbacks[0].model == "opencode-go/glm-5.3"
+
+
+def test_agent_active_target_and_pin_are_persisted(
+    isolated_global_config: Path,
+) -> None:
+    set_agent("builder", "cursor", model="composer-2.5", scope="global")
+    add_agent_fallback(
+        "builder",
+        "opencode",
+        model="opencode-go/glm-5.3-flash",
+        scope="global",
+    )
+
+    set_agent_active_target("builder", active_index=1, scope="global")
+    pin_agent("builder", scope="global")
+    resolved = resolve_agents()["builder"]
+
+    assert resolved.active_index == 1
+    assert resolved.manual_pin is True
+
+    unpin_agent("builder", scope="global")
+    assert resolve_agents()["builder"].manual_pin is False
 
 
 def test_invalid_model_raises() -> None:

@@ -37,6 +37,7 @@ class ResolvedAgent:
     fallbacks: tuple[AgentSetting, ...] = ()
     automatic: bool = False
     active_index: int = 0
+    manual_pin: bool = False
 
     @property
     def primary(self) -> AgentSetting:
@@ -200,6 +201,7 @@ def _resolved_agent_from_raw(
         fallbacks=tuple(_settings_from_raw(raw.get("fallbacks") or [], catalog)),
         automatic=bool(raw.get("automatic", routing.get("automatic", False))),
         active_index=int(raw.get("active_index") or 0),
+        manual_pin=bool(raw.get("manual_pin", False)),
     )
 
 
@@ -330,6 +332,52 @@ def add_agent_fallback(
     return setting
 
 
+def set_agent_active_target(
+    role: str,
+    *,
+    active_index: int,
+    manual_pin: bool | None = None,
+    scope: AgentScope = "global",
+    repo_root: Path | None = None,
+) -> None:
+    agents = _load_agents_for_scope(scope, repo_root)
+    route = _normalize_agent_route(agents.get(role), role)
+    _validate_active_index(route, active_index)
+    route["active_index"] = active_index
+    if manual_pin is not None:
+        route["manual_pin"] = manual_pin
+    agents[role] = route
+    _save_agents_for_scope(scope, repo_root, agents)
+
+
+def pin_agent(
+    role: str,
+    *,
+    scope: AgentScope = "global",
+    repo_root: Path | None = None,
+) -> None:
+    agents = _load_agents_for_scope(scope, repo_root)
+    route = _normalize_agent_route(agents.get(role), role)
+    active_index = int(route.get("active_index") or 0)
+    _validate_active_index(route, active_index)
+    route["manual_pin"] = True
+    agents[role] = route
+    _save_agents_for_scope(scope, repo_root, agents)
+
+
+def unpin_agent(
+    role: str,
+    *,
+    scope: AgentScope = "global",
+    repo_root: Path | None = None,
+) -> None:
+    agents = _load_agents_for_scope(scope, repo_root)
+    route = _normalize_agent_route(agents.get(role), role)
+    route["manual_pin"] = False
+    agents[role] = route
+    _save_agents_for_scope(scope, repo_root, agents)
+
+
 def swap_agents(
     *,
     scope: AgentScope = "global",
@@ -368,15 +416,21 @@ def _normalize_agent_route(raw: dict[str, Any] | None, role: str) -> dict[str, A
             "primary": _agent_payload(default),
             "fallbacks": [],
             "automatic": False,
+            "active_index": 0,
+            "manual_pin": False,
         }
     if "primary" in raw:
         normalized = dict(raw)
         normalized.setdefault("fallbacks", [])
+        normalized.setdefault("active_index", 0)
+        normalized.setdefault("manual_pin", False)
         return normalized
     return {
         "primary": {key: value for key, value in raw.items() if key != "fallbacks"},
         "fallbacks": list(raw.get("fallbacks") or []),
         "automatic": False,
+        "active_index": 0,
+        "manual_pin": False,
     }
 
 
@@ -430,3 +484,12 @@ def _catalog_billing_profile(models: list[Any], model_id: str) -> str | None:
         if model.id == model_id:
             return model.billing_profile
     return None
+
+
+def _validate_active_index(route: dict[str, Any], active_index: int) -> None:
+    max_index = len(route.get("fallbacks") or [])
+    if active_index < 0 or active_index > max_index:
+        raise ValueError(
+            f"active index {active_index} is out of range; "
+            f"available range is 0..{max_index}"
+        )
