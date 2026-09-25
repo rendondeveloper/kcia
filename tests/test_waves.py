@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -14,7 +15,13 @@ from typer.testing import CliRunner
 
 from kcia.main import app
 
-from kcia.providers.base import RunResult
+from kcia.config import save_repo_agents
+from kcia.providers.base import (
+    ProviderCapabilities,
+    ProviderFailure,
+    ProviderFailureKind,
+    RunResult,
+)
 from kcia.waves.definitions import load_waves
 from kcia.waves.prompts import build_prompt
 from kcia.waves.runner import _format_validation_failures, check_requires, run_wave
@@ -44,6 +51,19 @@ def git_repo(tmp_path: Path) -> Path:
 
 def _mock_provider(*_args, **_kwargs) -> RunResult:
     return RunResult(output_text="# Task output\n\nProblem understood.\n", exit_code=0)
+
+
+def _fake_adapter(provider: str):
+    return SimpleNamespace(
+        locate=lambda: f"/usr/bin/{provider}",
+        capabilities=ProviderCapabilities(
+            supports_streaming=True,
+            supports_sessions=True,
+            supports_effort=True,
+            supports_tool_restriction=False,
+            supports_mcp_config=False,
+        ),
+    )
 
 
 def test_classify_input_prompt_mode_without_jira() -> None:
@@ -198,6 +218,57 @@ def test_wave_run_understanding_writes_task_md(git_repo: Path) -> None:
     task_md = git_repo / ".ai" / "context" / "task.md"
     assert task_md.is_file()
     assert "Scoped work" in task_md.read_text(encoding="utf-8")
+
+
+def test_wave_falls_back_on_confirmed_quota_failure(git_repo: Path) -> None:
+    Session.create(git_repo, text="fix bug", mode="prompt")
+    save_repo_agents(
+        git_repo,
+        {
+            "planner": {
+                "primary": {"provider": "cursor", "model": "composer-2.5"},
+                "fallbacks": [
+                    {
+                        "provider": "opencode",
+                        "model": "opencode-go/glm-5.3",
+                        "billing_profile": "opencode-go",
+                    }
+                ],
+                "automatic": True,
+            }
+        },
+    )
+    session = Session.load(git_repo)
+    captured_models: list[str] = []
+
+    def runner_fn(_adapter, req, **_kwargs):
+        captured_models.append(req.model)
+        if req.model == "composer-2.5":
+            return RunResult(
+                output_text="",
+                exit_code=1,
+                provider_failure=ProviderFailure(
+                    kind=ProviderFailureKind.QUOTA_EXHAUSTED,
+                    message="quota exhausted",
+                ),
+            )
+        return RunResult(output_text="# Task\n\nFallback scoped work.", exit_code=0)
+
+    with (
+        patch("kcia.waves.runner.get_adapter", side_effect=_fake_adapter),
+        patch("kcia.execution.coordinator.get_adapter", side_effect=_fake_adapter),
+    ):
+        result = run_wave(
+            "understanding",
+            session,
+            provider_runner=runner_fn,
+        )
+
+    assert result.status == "completed"
+    assert captured_models == ["composer-2.5", "opencode-go/glm-5.3"]
+    assert "Fallback scoped work" in (
+        git_repo / ".ai" / "context" / "task.md"
+    ).read_text(encoding="utf-8")
 
 
 def test_wave_run_analysis_requires_understanding(git_repo: Path) -> None:
