@@ -10,7 +10,13 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
-from kcia.providers.base import ProviderAdapter, RunRequest, RunResult
+from kcia.providers.base import (
+    ProviderAdapter,
+    ProviderFailure,
+    ProviderFailureKind,
+    RunRequest,
+    RunResult,
+)
 from kcia.providers.events import ProviderError, StreamEvent, StreamState
 
 DEFAULT_IDLE_TIMEOUT_SECONDS = 180
@@ -222,11 +228,15 @@ def run_provider(
     tokens_used = None
     if state.input_tokens or state.output_tokens:
         tokens_used = state.input_tokens + state.output_tokens
+    provider_failure = _provider_failure(events, timed_out, cancelled)
+    exit_code = process.returncode or 0
+    if provider_failure is not None and provider_failure.kind is not ProviderFailureKind.CANCELLED:
+        exit_code = exit_code or 1
 
     return RunResult(
         output_text=output_text,
         stderr_text="".join(stderr_chunks),
-        exit_code=process.returncode or 0,
+        exit_code=exit_code,
         tokens_used=tokens_used,
         input_tokens=state.input_tokens,
         output_tokens=state.output_tokens,
@@ -238,6 +248,7 @@ def run_provider(
         timed_out=timed_out,
         cancelled=cancelled,
         cancel_reason=_cancel_reason(interrupted, cancelled, timed_out),
+        provider_failure=provider_failure,
     )
 
 
@@ -249,6 +260,62 @@ def _cancel_reason(interrupted: bool, cancelled: bool, timed_out: bool) -> str |
     if timed_out:
         return "idle timeout"
     return None
+
+
+def _provider_failure(
+    events: list[StreamEvent],
+    timed_out: bool,
+    cancelled: bool,
+) -> ProviderFailure | None:
+    if cancelled:
+        return ProviderFailure(
+            kind=ProviderFailureKind.CANCELLED,
+            message="provider run was cancelled",
+            retryable=False,
+        )
+    if timed_out:
+        return ProviderFailure(
+            kind=ProviderFailureKind.TIMEOUT,
+            message="provider run reached the idle timeout",
+            retryable=True,
+        )
+    errors = [
+        event for event in events if isinstance(event, ProviderError) and event.fatal
+    ]
+    if not errors:
+        return None
+    error = errors[-1]
+    return ProviderFailure(
+        kind=_classify_provider_error(error),
+        message=error.message,
+        original_code=error.code,
+        retryable=bool(error.retryable),
+        retry_at=error.retry_at,
+    )
+
+
+def _classify_provider_error(error: ProviderError) -> ProviderFailureKind:
+    code = (error.code or "").lower()
+    if "quota" in code or "insufficient_quota" in code:
+        return ProviderFailureKind.QUOTA_EXHAUSTED
+    if "rate" in code or code == "429":
+        return ProviderFailureKind.RATE_LIMIT
+    if "auth" in code or "unauthorized" in code or "forbidden" in code:
+        return ProviderFailureKind.AUTH
+    if "context" in code:
+        return ProviderFailureKind.CONTEXT_LENGTH
+    message = error.message.lower()
+    if "quota" in message or "usage limit" in message:
+        return ProviderFailureKind.QUOTA_EXHAUSTED
+    if "rate limit" in message or "too many requests" in message:
+        return ProviderFailureKind.RATE_LIMIT
+    if "unauthorized" in message or "login" in message or "authentication" in message:
+        return ProviderFailureKind.AUTH
+    if "context" in message and "length" in message:
+        return ProviderFailureKind.CONTEXT_LENGTH
+    if "network" in message or "connection" in message:
+        return ProviderFailureKind.NETWORK
+    return ProviderFailureKind.UNKNOWN
 
 
 def iter_stream_events(

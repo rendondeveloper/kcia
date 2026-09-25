@@ -36,6 +36,8 @@ class CursorAdapter:
             supports_effort=False,
             supports_tool_restriction=False,
             supports_mcp_config=True,
+            supports_resume=True,
+            supports_cancellation=True,
         )
 
     def locate(self) -> str | None:

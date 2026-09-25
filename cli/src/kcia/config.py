@@ -24,6 +24,7 @@ class AgentSetting:
     provider: str
     model: str
     effort: str | None = None
+    billing_profile: str | None = None
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,17 @@ class ResolvedAgent:
     model: str
     effort: str | None
     origin: ConfigOrigin
+    fallbacks: tuple[AgentSetting, ...] = ()
+    automatic: bool = False
+    active_index: int = 0
+
+    @property
+    def primary(self) -> AgentSetting:
+        return AgentSetting(
+            provider=self.provider,
+            model=self.model,
+            effort=self.effort,
+        )
 
 
 def repo_local_agents_path(repo_root: Path) -> Path:
@@ -79,7 +91,7 @@ def save_repo_agents(repo_root: Path, agents: dict[str, Any]) -> None:
     path = repo_local_agents_path(repo_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        yaml.safe_dump({"schema_version": 1, "agents": agents}, sort_keys=False),
+        yaml.safe_dump({"schema_version": 2, "agents": agents}, sort_keys=False),
         encoding="utf-8",
     )
 
@@ -96,6 +108,21 @@ def default_agent_setting(role: str) -> AgentSetting:
     return AgentSetting(provider=provider_id, model=entry.default_model)
 
 
+def default_route_policy() -> dict[str, Any]:
+    return {
+        "automatic": False,
+        "warn_at_percent": 90,
+        "proactive_switch_at_percent": None,
+        "return_to_primary": "safe_boundary",
+        "all_unavailable": "wait",
+        "max_switches_per_operation": 3,
+        "allow_paid_overage": False,
+        "quota_poll_seconds": 60,
+        "unknown_quota_retry_seconds": 300,
+        "anti_flap_seconds": 120,
+    }
+
+
 def resolve_agents(
     repo_root: Path | None = None,
     *,
@@ -103,7 +130,9 @@ def resolve_agents(
 ) -> dict[str, ResolvedAgent]:
     """Resolve planner/builder with §7.1 precedence."""
     catalog = load_catalog()
-    global_agents = load_global_config().get("agents", {})
+    global_config = load_global_config()
+    global_agents = global_config.get("agents", {})
+    global_routing = global_config.get("routing", {})
     repo_agents = load_repo_agents(repo_root) if repo_root else {}
     flag_overrides = flag_overrides or {}
 
@@ -122,23 +151,23 @@ def resolve_agents(
 
         if role in repo_agents:
             raw = repo_agents[role]
-            resolved[role] = ResolvedAgent(
+            resolved[role] = _resolved_agent_from_raw(
                 role=role,
-                provider=raw["provider"],
-                model=raw.get("model") or catalog[raw["provider"]].default_model,
-                effort=raw.get("effort"),
+                raw=raw,
                 origin="repo",
+                routing={},
+                catalog=catalog,
             )
             continue
 
         if role in global_agents:
             raw = global_agents[role]
-            resolved[role] = ResolvedAgent(
+            resolved[role] = _resolved_agent_from_raw(
                 role=role,
-                provider=raw["provider"],
-                model=raw.get("model") or catalog[raw["provider"]].default_model,
-                effort=raw.get("effort"),
+                raw=raw,
                 origin="global",
+                routing=global_routing,
+                catalog=catalog,
             )
             continue
 
@@ -151,6 +180,50 @@ def resolve_agents(
             origin="default",
         )
     return resolved
+
+
+def _resolved_agent_from_raw(
+    *,
+    role: str,
+    raw: dict[str, Any],
+    origin: ConfigOrigin,
+    routing: dict[str, Any],
+    catalog: dict[str, Any],
+) -> ResolvedAgent:
+    primary = _primary_from_raw(raw, catalog)
+    return ResolvedAgent(
+        role=role,
+        provider=primary.provider,
+        model=primary.model,
+        effort=primary.effort,
+        origin=origin,
+        fallbacks=tuple(_settings_from_raw(raw.get("fallbacks") or [], catalog)),
+        automatic=bool(raw.get("automatic", routing.get("automatic", False))),
+        active_index=int(raw.get("active_index") or 0),
+    )
+
+
+def _primary_from_raw(raw: dict[str, Any], catalog: dict[str, Any]) -> AgentSetting:
+    if isinstance(raw.get("primary"), dict):
+        return _setting_from_raw(raw["primary"], catalog)
+    return _setting_from_raw(raw, catalog)
+
+
+def _settings_from_raw(
+    raw_items: list[dict[str, Any]],
+    catalog: dict[str, Any],
+) -> list[AgentSetting]:
+    return [_setting_from_raw(item, catalog) for item in raw_items]
+
+
+def _setting_from_raw(raw: dict[str, Any], catalog: dict[str, Any]) -> AgentSetting:
+    provider = raw["provider"]
+    return AgentSetting(
+        provider=provider,
+        model=raw.get("model") or catalog[provider].default_model,
+        effort=raw.get("effort"),
+        billing_profile=raw.get("billing_profile"),
+    )
 
 
 def model_in_catalog(provider: str, model: str) -> bool:
@@ -197,12 +270,7 @@ def set_agent(
         raise ValueError(f"no model specified for provider '{provider}'")
 
     setting = AgentSetting(provider=provider, model=chosen_model, effort=effort)
-    payload = {
-        "provider": setting.provider,
-        "model": setting.model,
-    }
-    if setting.effort is not None:
-        payload["effort"] = setting.effort
+    payload = _agent_payload(setting)
 
     if scope == "repo":
         if repo_root is None:
@@ -219,30 +287,55 @@ def set_agent(
     return setting
 
 
+def add_agent_fallback(
+    role: str,
+    provider: str,
+    *,
+    model: str | None = None,
+    effort: str | None = None,
+    billing_profile: str | None = None,
+    scope: AgentScope = "global",
+    repo_root: Path | None = None,
+) -> AgentSetting:
+    catalog = load_catalog()
+    _validate_model(catalog, provider, model)
+    entry = catalog[provider]
+    setting = AgentSetting(
+        provider=provider,
+        model=model or entry.default_model,
+        effort=effort,
+        billing_profile=billing_profile
+        or _catalog_billing_profile(entry.models, model or entry.default_model),
+    )
+    agents = _load_agents_for_scope(scope, repo_root)
+    route = _normalize_agent_route(agents.get(role), role)
+    fallbacks = route.setdefault("fallbacks", [])
+    if any(
+        item.get("provider") == setting.provider and item.get("model") == setting.model
+        for item in fallbacks
+    ):
+        raise ValueError(
+            f"fallback already exists for {role}: {provider}/{setting.model}"
+        )
+    if (
+        route["primary"]["provider"] == setting.provider
+        and route["primary"].get("model") == setting.model
+    ):
+        raise ValueError(
+            f"fallback duplicates primary for {role}: {provider}/{setting.model}"
+        )
+    fallbacks.append(_agent_payload(setting))
+    agents[role] = route
+    _save_agents_for_scope(scope, repo_root, agents)
+    return setting
+
+
 def swap_agents(
     *,
     scope: AgentScope = "global",
     repo_root: Path | None = None,
 ) -> None:
-    if scope == "repo":
-        if repo_root is None:
-            raise ValueError("repo scope requires a repository root")
-        agents = load_repo_agents(repo_root)
-        planner = agents.get("planner")
-        builder = agents.get("builder")
-        if planner:
-            agents["builder"] = planner
-        else:
-            agents.pop("builder", None)
-        if builder:
-            agents["planner"] = builder
-        else:
-            agents.pop("planner", None)
-        save_repo_agents(repo_root, agents)
-        return
-
-    config = load_global_config()
-    agents = config.setdefault("agents", {})
+    agents = _load_agents_for_scope(scope, repo_root)
     planner = agents.get("planner")
     builder = agents.get("builder")
     if planner:
@@ -253,4 +346,87 @@ def swap_agents(
         agents["planner"] = builder
     else:
         agents.pop("planner", None)
+    _save_agents_for_scope(scope, repo_root, agents)
+
+
+def _agent_payload(setting: AgentSetting) -> dict[str, Any]:
+    payload = {
+        "provider": setting.provider,
+        "model": setting.model,
+    }
+    if setting.effort is not None:
+        payload["effort"] = setting.effort
+    if setting.billing_profile is not None:
+        payload["billing_profile"] = setting.billing_profile
+    return payload
+
+
+def _normalize_agent_route(raw: dict[str, Any] | None, role: str) -> dict[str, Any]:
+    if raw is None:
+        default = default_agent_setting(role)
+        return {
+            "primary": _agent_payload(default),
+            "fallbacks": [],
+            "automatic": False,
+        }
+    if "primary" in raw:
+        normalized = dict(raw)
+        normalized.setdefault("fallbacks", [])
+        return normalized
+    return {
+        "primary": {key: value for key, value in raw.items() if key != "fallbacks"},
+        "fallbacks": list(raw.get("fallbacks") or []),
+        "automatic": False,
+    }
+
+
+def _load_agents_for_scope(scope: AgentScope, repo_root: Path | None) -> dict[str, Any]:
+    if scope == "repo":
+        if repo_root is None:
+            raise ValueError("repo scope requires a repository root")
+        return load_repo_agents(repo_root)
+    return load_global_config().setdefault("agents", {})
+
+
+def _save_agents_for_scope(
+    scope: AgentScope,
+    repo_root: Path | None,
+    agents: dict[str, Any],
+) -> None:
+    if scope == "repo":
+        if repo_root is None:
+            raise ValueError("repo scope requires a repository root")
+        save_repo_agents(repo_root, agents)
+        return
+    config = load_global_config()
+    config["schema_version"] = max(int(config.get("schema_version", 1)), 2)
+    config["agents"] = agents
+    config.setdefault("routing", default_route_policy())
     save_global_config(config)
+
+
+def _validate_model(
+    catalog: dict[str, Any],
+    provider: str,
+    model: str | None,
+) -> None:
+    if provider not in catalog:
+        available = ", ".join(sorted(catalog))
+        raise ValueError(f"unknown provider '{provider}'; available: {available}")
+    entry = catalog[provider]
+    chosen_model = model or entry.default_model
+    model_ids = [item.id for item in entry.models]
+    if entry.model_source != "live" and chosen_model not in model_ids:
+        raise ValueError(
+            f"unknown model '{chosen_model}' for provider '{provider}'; "
+            f"available: {', '.join(model_ids)}"
+        )
+    if not chosen_model:
+        raise ValueError(f"no model specified for provider '{provider}'")
+
+
+def _catalog_billing_profile(models: list[Any], model_id: str) -> str | None:
+    for model in models:
+        if model.id == model_id:
+            return model.billing_profile
+    return None

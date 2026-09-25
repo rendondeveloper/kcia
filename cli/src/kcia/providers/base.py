@@ -17,6 +17,34 @@ class AuthStatus(Enum):
     NOT_INSTALLED = "not_installed"
 
 
+class QuotaSignalConfidence(Enum):
+    EXACT = "exact"
+    ESTIMATED = "estimated"
+    UNKNOWN = "unknown"
+
+
+class ProviderFailureKind(Enum):
+    QUOTA_EXHAUSTED = "quota_exhausted"
+    RATE_LIMIT = "rate_limit"
+    AUTH = "auth"
+    NETWORK = "network"
+    CONTEXT_LENGTH = "context_length"
+    CANCELLED = "cancelled"
+    TIMEOUT = "timeout"
+    CONTENT = "content"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class ProviderFailure:
+    kind: ProviderFailureKind
+    message: str
+    original_code: str | None = None
+    retryable: bool = False
+    quota_scope: str | None = None
+    retry_at: str | None = None
+
+
 @dataclass(frozen=True)
 class ProviderCapabilities:
     supports_streaming: bool
@@ -24,6 +52,10 @@ class ProviderCapabilities:
     supports_effort: bool
     supports_tool_restriction: bool
     supports_mcp_config: bool
+    supports_quota_snapshot: bool = False
+    quota_signal_confidence: QuotaSignalConfidence = QuotaSignalConfidence.UNKNOWN
+    supports_resume: bool = False
+    supports_cancellation: bool = False
 
 
 @dataclass(frozen=True)
@@ -63,6 +95,7 @@ class RunResult:
     timed_out: bool = False
     cancelled: bool = False
     cancel_reason: str | None = None
+    provider_failure: ProviderFailure | None = None
 
 
 class ProviderAdapter(Protocol):

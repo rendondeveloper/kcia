@@ -15,6 +15,9 @@ class ProviderModel:
     tier: str | None = None
     best_for: list[str] | None = None
     num_ctx: int | None = None
+    billing_profile: str | None = None
+    roles: list[str] | None = None
+    profile: str | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,9 @@ def load_catalog() -> dict[str, ProviderCatalogEntry]:
                 tier=item.get("tier"),
                 best_for=item.get("best_for"),
                 num_ctx=item.get("num_ctx"),
+                billing_profile=item.get("billing_profile"),
+                roles=item.get("roles"),
+                profile=item.get("profile"),
             )
             for item in raw.get("models", [])
         ]

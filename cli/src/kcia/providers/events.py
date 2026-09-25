@@ -66,3 +66,6 @@ class TurnEnd(StreamEvent):
 class ProviderError(StreamEvent):
     message: str
     fatal: bool
+    code: str | None = None
+    retryable: bool | None = None
+    retry_at: str | None = None

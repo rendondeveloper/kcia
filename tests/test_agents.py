@@ -10,6 +10,7 @@ import pytest
 
 from kcia.config import (
     GLOBAL_CONFIG_FILE,
+    add_agent_fallback,
     load_global_config,
     load_repo_agents,
     resolve_agents,
@@ -139,6 +140,7 @@ def test_agent_set_persists_global(isolated_global_config: Path) -> None:
     assert resolved["planner"].provider == "claude"
     assert resolved["planner"].model == "claude-opus-5"
     assert resolved["planner"].origin == "global"
+    assert resolved["planner"].fallbacks == ()
 
 
 def test_agent_set_repo_scope(git_repo: Path, isolated_global_config: Path) -> None:
@@ -178,6 +180,30 @@ def test_agent_swap_exchanges_provider_model_effort(
     assert resolved["builder"].provider == "claude"
     assert resolved["builder"].model == "claude-opus-5"
     assert resolved["builder"].effort == "high"
+
+
+def test_agent_fallback_route_is_persisted_and_resolved(
+    isolated_global_config: Path,
+) -> None:
+    set_agent("planner", "claude", model="claude-sonnet-5", scope="global")
+    add_agent_fallback(
+        "planner",
+        "opencode",
+        model="opencode-go/glm-5.3",
+        scope="global",
+    )
+
+    config = load_global_config()
+    assert config["schema_version"] == 2
+    assert config["agents"]["planner"]["primary"]["provider"] == "claude"
+    fallback = config["agents"]["planner"]["fallbacks"][0]
+    assert fallback["model"] == "opencode-go/glm-5.3"
+    assert fallback["billing_profile"] == "opencode-go"
+
+    resolved = resolve_agents()
+    assert resolved["planner"].provider == "claude"
+    assert resolved["planner"].fallbacks[0].provider == "opencode"
+    assert resolved["planner"].fallbacks[0].model == "opencode-go/glm-5.3"
 
 
 def test_invalid_model_raises() -> None:
@@ -220,9 +246,47 @@ def test_agent_models_json_lists_tier_and_best_for() -> None:
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert payload["claude"]["default_model"] == "claude-sonnet-5"
-    sonnet = next(m for m in payload["claude"]["models"] if m["id"] == "claude-sonnet-5")
+    sonnet = next(
+        m for m in payload["claude"]["models"] if m["id"] == "claude-sonnet-5"
+    )
     assert sonnet["tier"] == "balanced"
     assert sonnet["best_for"] == ["implementation", "review"]
+
+
+def test_agent_models_opencode_defaults_to_go_profile() -> None:
+    result = subprocess.run(
+        [str(KCIA), "agent", "models", "opencode", "--json"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    ids = [model["id"] for model in payload["opencode"]["models"]]
+    assert ids == [
+        "opencode-go/glm-5.3",
+        "opencode-go/glm-5.2",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/minimax-m3",
+    ]
+    assert all(
+        model["billing_profile"] == "opencode-go"
+        for model in payload["opencode"]["models"]
+    )
+
+
+def test_agent_models_opencode_all_keeps_non_go_catalog_entries() -> None:
+    result = subprocess.run(
+        [str(KCIA), "agent", "models", "opencode", "--json", "--all"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    ids = [model["id"] for model in payload["opencode"]["models"]]
+    assert "opencode/big-pickle" in ids
+    assert "opencode-go/gpt-5.6-luna" in ids
 
 
 def test_agent_models_rejects_unknown_provider() -> None:
@@ -246,7 +310,15 @@ def test_catalog_opencode_models_use_real_ids() -> None:
     assert "opencode/hy3-free" not in ids
     assert "opencode/x-preview-f-free" not in ids
     assert len(ids) == 34
-    assert entry.default_model == "opencode/big-pickle"
+    assert entry.default_model == "opencode-go/glm-5.3-flash"
+    go_models = [model for model in entry.models if model.profile == "go"]
+    assert [model.id for model in go_models] == [
+        "opencode-go/glm-5.3",
+        "opencode-go/glm-5.2",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/minimax-m3",
+    ]
+    assert {model.billing_profile for model in go_models} == {"opencode-go"}
     adapter = get_adapter("opencode")
     assert adapter.id == "opencode"
     assert adapter.executable == "opencode"

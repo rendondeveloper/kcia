@@ -41,6 +41,8 @@ class OpenCodeAdapter:
             supports_effort=True,
             supports_tool_restriction=False,
             supports_mcp_config=False,
+            supports_resume=True,
+            supports_cancellation=True,
         )
 
     def locate(self) -> str | None:
