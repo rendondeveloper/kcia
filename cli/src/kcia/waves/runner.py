@@ -10,11 +10,14 @@ import threading
 from typing import Callable
 
 from kcia.config import ResolvedAgent, resolve_agents
-from kcia.providers.base import RunRequest
+from kcia.execution.coordinator import ExecutionCoordinator
+from kcia.execution.models import AgentTarget
+from kcia.execution.routing import RoutingPolicy
+from kcia.providers.base import ProviderAdapter, RunRequest
 from kcia.providers.catalog import load_catalog
 from kcia.providers.events import StreamEvent
 from kcia.providers.registry import get_adapter
-from kcia.providers.runner import call_provider, run_provider
+from kcia.providers.runner import run_provider
 from kcia.mcp.config import (
     CURSOR_CONFIG,
     OPENCODE_CONFIG,
@@ -65,6 +68,27 @@ class WaveResult:
 
 
 ProviderRunner = Callable[..., object]
+
+
+def _run_agent_request(
+    agent: ResolvedAgent,
+    make_request: Callable[[AgentTarget, ProviderAdapter], RunRequest],
+    *,
+    operation_id: str,
+    runner: ProviderRunner,
+    on_event: Callable[[StreamEvent], None] | None,
+    should_cancel: Callable[[], bool] | None,
+) -> object:
+    return ExecutionCoordinator(
+        policy=RoutingPolicy(automatic=agent.automatic),
+        runner=runner,
+    ).run(
+        agent,
+        make_request,
+        operation_id=operation_id,
+        on_event_for_target=lambda _target: on_event,
+        should_cancel=should_cancel,
+    ).result
 
 
 class WaveBlocked(Exception):
@@ -312,31 +336,44 @@ def run_wave(
                 )
             prompt_path = _write_prompt_file(session, wave_id, attempts, prompt)
 
-            # Rendered per wave, so a role only ever sees the servers it may use.
-            mcp_config = _render_mcp_config(session, wave, agent.provider)
-            mcp_tools = allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
-
-            req = RunRequest(
-                prompt=prompt,
-                model=agent.model,
-                mcp_config=mcp_config,
-                mcp_tools=mcp_tools,
-                allow_edits=wave.allow_edits,
-                stream=adapter.capabilities.supports_streaming,
-                workspace_dirs=[session.repo_root],
-                session_id=None,
-                resume=False,
-                effort=agent.effort,
-                allowed_tools=None,
-                disallowed_tools=None,
-                cwd=session.repo_root,
-                edit_scope=wave.edit_scope or None,
-            )
+            def make_request(
+                target: AgentTarget,
+                target_adapter: ProviderAdapter,
+            ) -> RunRequest:
+                mcp_config = _render_mcp_config(session, wave, target.provider)
+                mcp_tools = (
+                    allowed_tools_for_role(session.repo_root, wave.agent)
+                    if mcp_config
+                    else None
+                )
+                return RunRequest(
+                    prompt=prompt,
+                    model=target.model,
+                    mcp_config=mcp_config,
+                    mcp_tools=mcp_tools,
+                    allow_edits=wave.allow_edits,
+                    stream=target_adapter.capabilities.supports_streaming,
+                    workspace_dirs=[session.repo_root],
+                    session_id=None,
+                    resume=False,
+                    effort=target.effort,
+                    allowed_tools=None,
+                    disallowed_tools=None,
+                    cwd=session.repo_root,
+                    edit_scope=wave.edit_scope or None,
+                )
 
             if on_wave_start is not None and result is None:
                 on_wave_start(wave, agent)
 
-            result = call_provider(runner, adapter, req, on_event, should_cancel)
+            result = _run_agent_request(
+                agent,
+                make_request,
+                operation_id=f"wave:{wave_id}",
+                runner=runner,
+                on_event=on_event,
+                should_cancel=should_cancel,
+            )
             _raise_if_cancelled(wave, result)
             # A wave can invoke the provider several times (validation retries); the
             # token counts reported are the total for the wave, not just the last attempt.
@@ -416,23 +453,41 @@ def run_wave(
                     validation_error=current_error,
                 )
                 prompt_path = _write_prompt_file(session, wave_id, attempts, retry_prompt)
-                req = RunRequest(
-                    prompt=retry_prompt,
-                    model=agent.model,
-                    mcp_config=mcp_config,
-                    mcp_tools=mcp_tools,
-                    allow_edits=wave.allow_edits,
-                    stream=adapter.capabilities.supports_streaming,
-                    workspace_dirs=[session.repo_root],
-                    session_id=None,
-                    resume=False,
-                    effort=agent.effort,
-                    allowed_tools=None,
-                    disallowed_tools=None,
-                    cwd=session.repo_root,
-                    edit_scope=wave.edit_scope or None,
+                def make_retry_request(
+                    target: AgentTarget,
+                    target_adapter: ProviderAdapter,
+                ) -> RunRequest:
+                    mcp_config = _render_mcp_config(session, wave, target.provider)
+                    mcp_tools = (
+                        allowed_tools_for_role(session.repo_root, wave.agent)
+                        if mcp_config
+                        else None
+                    )
+                    return RunRequest(
+                        prompt=retry_prompt,
+                        model=target.model,
+                        mcp_config=mcp_config,
+                        mcp_tools=mcp_tools,
+                        allow_edits=wave.allow_edits,
+                        stream=target_adapter.capabilities.supports_streaming,
+                        workspace_dirs=[session.repo_root],
+                        session_id=None,
+                        resume=False,
+                        effort=target.effort,
+                        allowed_tools=None,
+                        disallowed_tools=None,
+                        cwd=session.repo_root,
+                        edit_scope=wave.edit_scope or None,
+                    )
+
+                result = _run_agent_request(
+                    agent,
+                    make_retry_request,
+                    operation_id=f"wave:{wave_id}:validation",
+                    runner=runner,
+                    on_event=on_event,
+                    should_cancel=should_cancel,
                 )
-                result = call_provider(runner, adapter, req, on_event, should_cancel)
                 _raise_if_cancelled(wave, result)
                 usage.add(result)
                 _write_wave_outputs(wave, session, result.output_text)  # type: ignore[attr-defined]
@@ -631,33 +686,44 @@ def run_wave_for_profile(
                 session, f"{wave_id}-{profile.profile_id}", attempts, prompt
             )
 
-            # Rendered per wave: role gates which servers can be used.
-            mcp_config = _render_mcp_config(session, wave, agent.provider)
-            mcp_tools = (
-                allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
-            )
-
             workspace_dirs = _workspace_dirs_for_profile(session.repo_root, profile.roots)
             cwd = workspace_dirs[0]
 
-            req = RunRequest(
-                prompt=prompt,
-                model=agent.model,
-                mcp_config=mcp_config,
-                mcp_tools=mcp_tools,
-                allow_edits=wave.allow_edits,
-                stream=adapter.capabilities.supports_streaming,
-                workspace_dirs=workspace_dirs,
-                session_id=None,
-                resume=False,
-                effort=agent.effort,
-                allowed_tools=None,
-                disallowed_tools=None,
-                cwd=cwd,
-                edit_scope=wave.edit_scope or None,
-            )
+            def make_request(
+                target: AgentTarget,
+                target_adapter: ProviderAdapter,
+            ) -> RunRequest:
+                mcp_config = _render_mcp_config(session, wave, target.provider)
+                mcp_tools = (
+                    allowed_tools_for_role(session.repo_root, wave.agent)
+                    if mcp_config
+                    else None
+                )
+                return RunRequest(
+                    prompt=prompt,
+                    model=target.model,
+                    mcp_config=mcp_config,
+                    mcp_tools=mcp_tools,
+                    allow_edits=wave.allow_edits,
+                    stream=target_adapter.capabilities.supports_streaming,
+                    workspace_dirs=workspace_dirs,
+                    session_id=None,
+                    resume=False,
+                    effort=target.effort,
+                    allowed_tools=None,
+                    disallowed_tools=None,
+                    cwd=cwd,
+                    edit_scope=wave.edit_scope or None,
+                )
 
-            result = call_provider(runner, adapter, req, on_event, should_cancel)
+            result = _run_agent_request(
+                agent,
+                make_request,
+                operation_id=f"wave:{wave_id}:{profile.profile_id}",
+                runner=runner,
+                on_event=on_event,
+                should_cancel=should_cancel,
+            )
             _raise_if_cancelled(wave, result)
 
             reason = detect_blocked(result.output_text)  # type: ignore[attr-defined]
@@ -751,24 +817,40 @@ def run_wave_for_profile(
                         retry_prompt,
                     )
 
-                req = RunRequest(
-                    prompt=retry_prompt,
-                    model=agent.model,
-                    mcp_config=mcp_config,
-                    mcp_tools=mcp_tools,
-                    allow_edits=wave.allow_edits,
-                    stream=adapter.capabilities.supports_streaming,
-                    workspace_dirs=workspace_dirs,
-                    session_id=None,
-                    resume=False,
-                    effort=agent.effort,
-                    allowed_tools=None,
-                    disallowed_tools=None,
-                    cwd=cwd,
-                    edit_scope=wave.edit_scope or None,
-                )
-                result = call_provider(
-                    runner, adapter, req, on_event, should_cancel
+                def make_retry_request(
+                    target: AgentTarget,
+                    target_adapter: ProviderAdapter,
+                ) -> RunRequest:
+                    mcp_config = _render_mcp_config(session, wave, target.provider)
+                    mcp_tools = (
+                        allowed_tools_for_role(session.repo_root, wave.agent)
+                        if mcp_config
+                        else None
+                    )
+                    return RunRequest(
+                        prompt=retry_prompt,
+                        model=target.model,
+                        mcp_config=mcp_config,
+                        mcp_tools=mcp_tools,
+                        allow_edits=wave.allow_edits,
+                        stream=target_adapter.capabilities.supports_streaming,
+                        workspace_dirs=workspace_dirs,
+                        session_id=None,
+                        resume=False,
+                        effort=target.effort,
+                        allowed_tools=None,
+                        disallowed_tools=None,
+                        cwd=cwd,
+                        edit_scope=wave.edit_scope or None,
+                    )
+
+                result = _run_agent_request(
+                    agent,
+                    make_retry_request,
+                    operation_id=f"wave:{wave_id}:{profile.profile_id}:validation",
+                    runner=runner,
+                    on_event=on_event,
+                    should_cancel=should_cancel,
                 )
                 _raise_if_cancelled(wave, result)
                 output_path = _write_wave_outputs_profile(
@@ -923,31 +1005,44 @@ def _run_integration_check(
     )
     prompt_path = _write_prompt_file(session, "integration-check", 1, prompt)
 
-    mcp_config = _render_mcp_config(session, wave, agent.provider)
-    mcp_tools = allowed_tools_for_role(session.repo_root, wave.agent) if mcp_config else None
     repo_root = session.repo_root
-    req = RunRequest(
-        prompt=prompt,
-        model=agent.model,
-        mcp_config=mcp_config,
-        mcp_tools=mcp_tools,
-        allow_edits=wave.allow_edits,
-        stream=adapter.capabilities.supports_streaming,
-        workspace_dirs=[repo_root / ".ai", repo_root],
-        session_id=None,
-        resume=False,
-        effort=agent.effort,
-        allowed_tools=None,
-        disallowed_tools=None,
-        cwd=repo_root,
-        edit_scope=wave.edit_scope or None,
-    )
+
+    def make_request(target: AgentTarget, target_adapter: ProviderAdapter) -> RunRequest:
+        mcp_config = _render_mcp_config(session, wave, target.provider)
+        mcp_tools = (
+            allowed_tools_for_role(session.repo_root, wave.agent)
+            if mcp_config
+            else None
+        )
+        return RunRequest(
+            prompt=prompt,
+            model=target.model,
+            mcp_config=mcp_config,
+            mcp_tools=mcp_tools,
+            allow_edits=wave.allow_edits,
+            stream=target_adapter.capabilities.supports_streaming,
+            workspace_dirs=[repo_root / ".ai", repo_root],
+            session_id=None,
+            resume=False,
+            effort=target.effort,
+            allowed_tools=None,
+            disallowed_tools=None,
+            cwd=repo_root,
+            edit_scope=wave.edit_scope or None,
+        )
 
     if before_run is not None:
         before_run()
 
     runner = provider_runner or run_provider
-    result = call_provider(runner, adapter, req, on_event, should_cancel)
+    result = _run_agent_request(
+        agent,
+        make_request,
+        operation_id="wave:integration-check",
+        runner=runner,
+        on_event=on_event,
+        should_cancel=should_cancel,
+    )
     _raise_if_cancelled(wave, result)
 
     output_text = getattr(result, "output_text", "") or ""
