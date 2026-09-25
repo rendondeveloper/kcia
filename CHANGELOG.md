@@ -5,6 +5,27 @@ entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
 
 ## Unreleased
 
+## 1.0.0 — 2026-09-25
+
+### CLI
+
+- **Breaking:** agent configuration now supports route schema v2 with `primary`,
+  ordered `fallbacks`, active target state, and manual pinning. Existing flat
+  planner/builder entries continue to resolve, while newly saved repo/global route
+  files use schema v2.
+- Added OpenCode Go fallback metadata and a curated `kcia agent models opencode`
+  profile containing `opencode-go/glm-5.3`, `opencode-go/glm-5.2`,
+  `opencode-go/glm-5.3-flash`, and `opencode-go/minimax-m3`; use `--all` to
+  inspect non-Go catalog entries.
+- Added `kcia agent fallback add/list`, `agent status`, `agent switch`,
+  `agent pin`, and `agent unpin`.
+- Added the execution coordinator used by waves, ask, skills, Jira reads, and
+  ticket fetches. Confirmed quota exhaustion can route to an eligible fallback;
+  transition-style Jira syncs remain conservative and do not automatically repeat
+  ambiguous remote effects.
+- Provider failures are now normalized on `RunResult`, including fatal stream
+  errors even when the provider process exits with code 0.
+
 ## 0.23.0 — 2026-09-24
 
 ### CLI

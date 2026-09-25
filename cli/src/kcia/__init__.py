@@ -1,3 +1,3 @@
 """kcia — control plane CLI for development agents."""
 
-VERSION = "0.23.1"
+VERSION = "1.0.0"
