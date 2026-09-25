@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -13,9 +14,16 @@ from typer.testing import CliRunner
 from kcia.ask.conversation import AskConversation, ask_path, build_work_prompt, clear_conversation
 from kcia.ask.prompt import build_ask_prompt
 from kcia.ask.run import run_ask_turn
+from kcia.config import save_repo_agents
 from kcia.history import index, log
 from kcia.main import app
-from kcia.providers.base import RunRequest, RunResult
+from kcia.providers.base import (
+    ProviderCapabilities,
+    ProviderFailure,
+    ProviderFailureKind,
+    RunRequest,
+    RunResult,
+)
 from kcia.waves.session import Session
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +59,22 @@ def _fake_runner(reply: str, *, session_id: str = "sess-1", exit_code: int = 0):
         )
 
     return _run
+
+
+def _fake_adapter(provider: str):
+    return SimpleNamespace(
+        id=provider,
+        display_name=provider,
+        executable=provider,
+        capabilities=ProviderCapabilities(
+            supports_streaming=True,
+            supports_sessions=True,
+            supports_effort=True,
+            supports_tool_restriction=False,
+            supports_mcp_config=False,
+        ),
+        locate=lambda: f"/usr/bin/{provider}",
+    )
 
 
 def _log_session(repo: Path, *, title: str = "Fix layout overflow") -> log.SessionEntry:
@@ -266,6 +290,55 @@ def test_second_turn_uses_provider_resume(melos_repo: Path) -> None:
     assert captured[1].resume is True
     assert captured[1].session_id == "sess-abc"
     assert "## Prior turns" not in captured[1].prompt
+
+
+def test_ask_falls_back_on_confirmed_quota_failure(melos_repo: Path) -> None:
+    save_repo_agents(
+        melos_repo,
+        {
+            "planner": {
+                "primary": {"provider": "cursor", "model": "composer-2.5"},
+                "fallbacks": [
+                    {
+                        "provider": "opencode",
+                        "model": "opencode-go/glm-5.3",
+                        "billing_profile": "opencode-go",
+                    }
+                ],
+                "automatic": True,
+            }
+        },
+    )
+    captured_models: list[str] = []
+
+    def runner_fn(adapter, req: RunRequest, on_event=None, should_cancel=None):
+        captured_models.append(req.model)
+        if req.model == "composer-2.5":
+            return RunResult(
+                output_text="",
+                exit_code=1,
+                provider_failure=ProviderFailure(
+                    kind=ProviderFailureKind.QUOTA_EXHAUSTED,
+                    message="quota exhausted",
+                ),
+            )
+        return RunResult(output_text="fallback answer", session_id="oc-1")
+
+    with (
+        patch("kcia.ask.run.get_adapter", side_effect=_fake_adapter),
+        patch("kcia.execution.coordinator.get_adapter", side_effect=_fake_adapter),
+    ):
+        output, conversation = run_ask_turn(
+            melos_repo,
+            "where is auth?",
+            AskConversation(),
+            provider_runner=runner_fn,
+        )
+
+    assert output == "fallback answer"
+    assert captured_models == ["composer-2.5", "opencode-go/glm-5.3"]
+    assert conversation.provider == "opencode"
+    assert conversation.model == "opencode-go/glm-5.3"
 
 
 def test_build_work_prompt_uses_transcript() -> None:

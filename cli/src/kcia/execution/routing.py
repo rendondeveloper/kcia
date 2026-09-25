@@ -50,7 +50,7 @@ class RoutingPolicy:
         clock: Callable[[], datetime] | None = None,
     ) -> RoutingDecision:
         now = _now(clock)
-        targets = _targets(route)
+        targets = targets_for_route(route)
         if pinned_index is not None:
             target = targets[pinned_index]
             return RoutingDecision("MANUAL_PIN", target, "manual pin")
@@ -91,7 +91,7 @@ class RoutingPolicy:
         if not self.automatic or switches_so_far >= self.max_switches_per_operation:
             return RoutingDecision("WAITING_FOR_CAPACITY", None, "automatic routing disabled")
 
-        targets = _targets(route)
+        targets = targets_for_route(route)
         for target in targets:
             if target == current:
                 continue
@@ -113,7 +113,7 @@ class RoutingPolicy:
         )
 
 
-def _targets(route: ResolvedAgent) -> tuple[AgentTarget, ...]:
+def targets_for_route(route: ResolvedAgent) -> tuple[AgentTarget, ...]:
     primary = AgentTarget(
         provider=route.provider,
         model=route.model,

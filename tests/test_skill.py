@@ -5,16 +5,25 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 import yaml
 from typer.testing import CliRunner
 
+from kcia.config import save_repo_agents
 from kcia.main import app
+from kcia.providers.base import (
+    ProviderCapabilities,
+    ProviderFailure,
+    ProviderFailureKind,
+    RunRequest,
+    RunResult,
+)
 from kcia.skills.catalog import load_catalog, skills_path
 from kcia.skills.result import SkillRunOutcome
-from kcia.skills.runner import build_skill_prompt
+from kcia.skills.runner import build_skill_prompt, run_cataloged_skill
 from kcia.waves.session import Session, session_path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +49,22 @@ def _write_skill(repo: Path, name: str) -> Path:
     skill_file = skill_dir / "SKILL.md"
     skill_file.write_text(f"# {name}\n", encoding="utf-8")
     return skill_file
+
+
+def _fake_adapter(provider: str):
+    return SimpleNamespace(
+        id=provider,
+        display_name=provider,
+        executable=provider,
+        capabilities=ProviderCapabilities(
+            supports_streaming=True,
+            supports_sessions=True,
+            supports_effort=True,
+            supports_tool_restriction=False,
+            supports_mcp_config=False,
+        ),
+        locate=lambda: f"/usr/bin/{provider}",
+    )
 
 
 @pytest.fixture
@@ -380,17 +405,66 @@ def test_run_cataloged_skill_marks_progress_failed(melos_repo: Path, monkeypatch
         original_finish(self, failed=failed)
 
     monkeypatch.setattr(WaveProgress, "finish", track_finish)
-    monkeypatch.setattr(
-        "kcia.skills.runner.call_provider",
-        lambda *args, **kwargs: RunResult(output_text="", exit_code=0),
-    )
-
     outcome = run_cataloged_skill(
         melos_repo,
         "backend",
         "deploy",
         skill_file,
         [],
+        provider_runner=lambda *args, **kwargs: RunResult(output_text="", exit_code=0),
     )
     assert outcome.exit_code == 1
     assert finished.get("failed") is True
+
+
+def test_run_cataloged_skill_falls_back_on_confirmed_quota_failure(
+    melos_repo: Path,
+) -> None:
+    skill_file = _write_skill(melos_repo, "deploy_staging_services")
+    save_repo_agents(
+        melos_repo,
+        {
+            "builder": {
+                "primary": {"provider": "cursor", "model": "composer-2.5"},
+                "fallbacks": [
+                    {
+                        "provider": "opencode",
+                        "model": "opencode-go/glm-5.3-flash",
+                        "billing_profile": "opencode-go",
+                    }
+                ],
+                "automatic": True,
+            }
+        },
+    )
+    captured_models: list[str] = []
+
+    def runner_fn(adapter, req: RunRequest, on_event=None, should_cancel=None):
+        captured_models.append(req.model)
+        if req.model == "composer-2.5":
+            return RunResult(
+                output_text="",
+                exit_code=1,
+                provider_failure=ProviderFailure(
+                    kind=ProviderFailureKind.QUOTA_EXHAUSTED,
+                    message="quota exhausted",
+                ),
+            )
+        return RunResult(output_text="Done.\nSKILL_OK: deployed fallback\n")
+
+    with (
+        patch("kcia.skills.runner.get_adapter", side_effect=_fake_adapter),
+        patch("kcia.execution.coordinator.get_adapter", side_effect=_fake_adapter),
+    ):
+        outcome = run_cataloged_skill(
+            melos_repo,
+            "backend",
+            "deploy",
+            skill_file,
+            [],
+            provider_runner=runner_fn,
+        )
+
+    assert outcome.exit_code == 0
+    assert captured_models == ["composer-2.5", "opencode-go/glm-5.3-flash"]
+    assert "SKILL_OK: deployed fallback" in outcome.output_text

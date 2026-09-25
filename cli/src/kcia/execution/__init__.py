@@ -2,7 +2,7 @@
 
 from kcia.execution.models import AgentTarget, ExecutionAttempt, HandoffRecord
 from kcia.execution.quota import QuotaSnapshot, QuotaStore, QuotaWindow
-from kcia.execution.routing import RoutingDecision, RoutingPolicy
+from kcia.execution.routing import RoutingDecision, RoutingPolicy, targets_for_route
 
 __all__ = [
     "AgentTarget",
@@ -13,4 +13,5 @@ __all__ = [
     "QuotaWindow",
     "RoutingDecision",
     "RoutingPolicy",
+    "targets_for_route",
 ]

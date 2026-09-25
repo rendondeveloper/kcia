@@ -7,10 +7,13 @@ from pathlib import Path
 from typing import Callable
 
 from kcia.config import resolve_agents
-from kcia.providers.base import RunRequest
+from kcia.execution.coordinator import ExecutionCoordinator
+from kcia.execution.models import AgentTarget
+from kcia.execution.routing import RoutingPolicy
+from kcia.providers.base import ProviderAdapter, RunRequest, RunResult
 from kcia.providers.catalog import load_catalog as load_provider_catalog
 from kcia.providers.registry import get_adapter
-from kcia.providers.runner import call_provider, run_provider
+from kcia.providers.runner import run_provider
 from kcia.skills.result import evaluate_skill_run, SkillRunOutcome
 from kcia.waves.progress import WaveProgress
 from kcia.waves.session import runs_dir
@@ -81,8 +84,8 @@ def run_cataloged_skill(
     if builder.provider not in catalog:
         raise RuntimeError(f"unknown provider '{builder.provider}'")
 
-    adapter = get_adapter(builder.provider)
-    if adapter.locate() is None:
+    primary_adapter = get_adapter(builder.provider)
+    if primary_adapter.locate() is None:
         entry = catalog[builder.provider]
         raise RuntimeError(
             f"provider '{builder.provider}' is not installed. {entry.install_hint}"
@@ -91,46 +94,73 @@ def run_cataloged_skill(
     prompt = build_skill_prompt(skill_file, repo_root, extra_argv)
     run_id = f"{namespace}-{shortcut}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
 
-    req = RunRequest(
-        prompt=prompt,
-        model=builder.model,
-        mcp_config=None,
-        mcp_tools=None,
-        allow_edits=True,
-        stream=adapter.capabilities.supports_streaming,
-        workspace_dirs=[repo_root],
-        session_id=None,
-        resume=False,
-        effort=builder.effort,
-        allowed_tools=None,
-        disallowed_tools=None,
-        cwd=repo_root,
-    )
-
     label = f"skill:{namespace}/{shortcut}"
-    progress = WaveProgress(
-        label,
-        "builder",
-        builder.provider,
-        builder.model,
-        periodic_updates=True,
-    )
     runner = provider_runner or run_provider
     result: object | None = None
-    progress.start()
-    try:
-        result = call_provider(
-            runner,
-            adapter,
-            req,
-            progress.handle,
-            should_cancel,
+    progress_by_target: dict[str, WaveProgress] = {}
+
+    def make_request(target: AgentTarget, adapter: ProviderAdapter) -> RunRequest:
+        return RunRequest(
+            prompt=prompt,
+            model=target.model,
+            mcp_config=None,
+            mcp_tools=None,
+            allow_edits=True,
+            stream=adapter.capabilities.supports_streaming,
+            workspace_dirs=[repo_root],
+            session_id=None,
+            resume=False,
+            effort=target.effort,
+            allowed_tools=None,
+            disallowed_tools=None,
+            cwd=repo_root,
         )
-    finally:
-        output_text = getattr(result, "output_text", "") or "" if result is not None else ""
-        provider_exit = int(getattr(result, "exit_code", 0) or 0) if result is not None else 1
+
+    def on_event_for_target(target: AgentTarget):
+        progress = WaveProgress(
+            label,
+            "builder",
+            target.provider,
+            target.model,
+            periodic_updates=True,
+        )
+        progress_by_target[target.id] = progress
+        progress.start()
+        return progress.handle
+
+    def on_attempt_finished(target: AgentTarget, attempt_result: RunResult) -> None:
+        progress = progress_by_target.pop(target.id, None)
+        if progress is None:
+            return
+        output_text = getattr(attempt_result, "output_text", "") or ""
+        provider_exit = int(getattr(attempt_result, "exit_code", 0) or 0)
         outcome = evaluate_skill_run(output_text, provider_exit)
         progress.finish(failed=outcome.exit_code != 0)
+
+    try:
+        coordinated = ExecutionCoordinator(
+            policy=RoutingPolicy(automatic=builder.automatic),
+            runner=runner,
+        ).run(
+            builder,
+            make_request,
+            operation_id=label,
+            on_event_for_target=on_event_for_target,
+            on_attempt_finished=on_attempt_finished,
+            should_cancel=should_cancel,
+        )
+        result = coordinated.result
+    finally:
+        for progress in progress_by_target.values():
+            progress.finish(failed=True)
+        progress_by_target.clear()
+        output_text = (
+            getattr(result, "output_text", "") or "" if result is not None else ""
+        )
+        provider_exit = (
+            int(getattr(result, "exit_code", 0) or 0) if result is not None else 1
+        )
+        outcome = evaluate_skill_run(output_text, provider_exit)
 
     _write_skill_run_files(repo_root, run_id, prompt, outcome.output_text)
     return outcome
