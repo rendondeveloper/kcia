@@ -11,7 +11,8 @@ You install kcia **once** on your machine. Each project only gets a `.ai/` direc
 ## Quickstart
 
 Every step, in the order you actually run them. Each one is explained in detail in
-[Step by step](#step-by-step) below.
+[Step by step](#step-by-step) below. For Jira automation, follow the
+[complete project-to-cycle example](#complete-example-project-setup-fallbacks-atlassian-and-cycle-mode).
 
 **Before you start:** Python 3.11+, `git`, and whichever provider you plan to use —
 `claude` and/or `cursor-agent` (hosted CLIs you already pay for), or a local **Ollama**
@@ -59,6 +60,282 @@ kcia done
 
 That is the whole loop. Steps 1–3 are done once ever, step 4 once per repository,
 steps 5–9 once per piece of work.
+
+---
+
+## Complete example: project setup, fallbacks, Atlassian and cycle mode
+
+This example uses `sport_monitor`, Jira project `SPRTMNTRPP`, and PR target `develop`.
+Substitute your checkout, Jira site/project key and existing branch names. Use KCIA
+**1.1.1 or later** for the Atlassian v2 configuration below. All project commands run
+from the same repository root in a local macOS/Linux terminal.
+
+### A. Install KCIA and sign in to the provider CLIs
+
+Install once, following [Install](#2-install), then check the executable:
+
+```bash
+kcia --version
+which kcia
+cd /path/to/sport_monitor
+
+# Provider account logins; these do not authenticate Atlassian.
+claude auth login
+cursor-agent login
+opencode auth login
+
+# GitHub owns PR creation, review inspection, thread resolution and merge.
+gh auth login
+gh auth status
+```
+
+In OpenCode's login flow, connect the OpenCode Go account you intend to use. Authenticate
+every provider selected below before starting unattended work. KCIA does not purchase a
+subscription or turn an unavailable model into an included one.
+
+### B. Assign the primary and fallback agents per project
+
+Inspect KCIA's catalog; the model IDs below are examples from the bundled catalog,
+and must also be available to your provider account:
+
+```bash
+kcia agent models claude
+kcia agent models cursor
+kcia agent models opencode
+
+# Set primaries first: agent set replaces that role's saved route.
+kcia agent set planner claude --model claude-opus-5 --scope repo
+kcia agent set builder cursor --model composer-2.5 --scope repo
+
+# Add ordered backups to the same project scope.
+kcia agent fallback add planner opencode --model opencode-go/glm-5.3 --billing-profile opencode-go --scope repo
+kcia agent fallback add builder opencode --model opencode-go/glm-5.3-flash --billing-profile opencode-go --scope repo
+
+kcia agent fallback list
+kcia agent status --json
+```
+
+`--scope repo` saves to `.ai/local/agents.yaml`; omitting it saves globally. Repeating
+`fallback add` for the same provider/model reports a duplicate. To add another backup,
+run it with a different model; the list order supplies the manual selection indices.
+`--billing-profile` identifies the account family, without changing billing or credentials.
+
+**Enable automatic routing explicitly.** Adding a fallback leaves `automatic` off.
+Edit the existing `.ai/local/agents.yaml` and set `automatic: true` for both roles.
+The resulting configuration for this example is:
+
+```yaml
+schema_version: 2
+agents:
+  planner:
+    primary:
+      provider: claude
+      model: claude-opus-5
+    fallbacks:
+      - provider: opencode
+        model: opencode-go/glm-5.3
+        billing_profile: opencode-go
+    automatic: true
+    active_index: 0
+    manual_pin: false
+  builder:
+    primary:
+      provider: cursor
+      model: composer-2.5
+    fallbacks:
+      - provider: opencode
+        model: opencode-go/glm-5.3-flash
+        billing_profile: opencode-go
+    automatic: true
+    active_index: 0
+    manual_pin: false
+```
+
+For a manual change, pause a running cycle with Ctrl-C first, then choose the target:
+
+```bash
+kcia agent switch builder --to fallback --index 1 --scope repo
+kcia agent switch planner --to fallback --index 1 --scope repo
+kcia agent status --json
+
+# Return either role to its primary.
+kcia agent switch builder --to primary --scope repo
+kcia agent switch planner --to primary --scope repo
+```
+
+These changes affect subsequent provider calls; they do not transfer a running provider
+process. Set a role's `automatic: false` when you want to prohibit further automatic
+switching. The coordinator retries on confirmed quota exhaustion, not on arbitrary errors.
+It currently starts each new operation from the configured active target: a fallback chosen
+inside a failed operation is not a persistent timer-based switch. There is no universal live
+90% quota warning or reset countdown across all subscriptions. `agent status` shows routing
+configuration, not remaining subscription allowance.
+
+In cycle mode, Jira reads/transitions always use the local Claude primary connection,
+including when the planner's coding work uses an OpenCode fallback. Losing Claude/Atlassian
+access pauses Jira synchronization; another coding provider cannot supply that OAuth login.
+
+### C. Initialize the project and its gitflow
+
+The example assumes `main` and `develop` already exist locally or as known remote branches:
+
+```bash
+git fetch origin
+kcia init --gitflow --main-branch main --develop-branch develop --on-done pr
+kcia branch config
+kcia agent show
+```
+
+Initialization detects technologies and writes the workflow manifest and provider adapters.
+It may change `.gitignore`; review and commit your setup changes before starting the cycle.
+Cycle mode requires a clean checkout and no unfinished interactive task. It fast-forwards
+the base and creates a dedicated branch for each item.
+
+### D. Connect Atlassian in this project's terminal
+
+Enable the server for KCIA, then register the **same URL** in Claude's local scope:
+
+```bash
+kcia mcp add atlassian
+claude mcp add --scope local --transport http atlassian 'https://mcp.atlassian.com/v2/mcp?tools=all'
+claude mcp login atlassian
+```
+
+Complete the browser consent using the account with access to your Jira site. If your
+Claude version has no `mcp login`, run `claude`, enter `/mcp`, select `atlassian` and
+complete authentication, then exit Claude and return to this terminal.
+
+If registration says **“server already exists”**, inspect it with `claude mcp get atlassian`.
+When it already uses the exact URL above, keep it and authenticate. When migrating an old
+local SSE/v1 entry, replace just that entry from this project directory, then sign in again:
+
+```bash
+claude mcp remove atlassian --scope local
+claude mcp add --scope local --transport http atlassian 'https://mcp.atlassian.com/v2/mcp?tools=all'
+claude mcp login atlassian
+kcia mcp add atlassian
+```
+
+Do not remove an entry from a different scope without checking it. `--scope local` is
+Claude's private configuration for this project; it is separate from KCIA's `--scope repo`.
+OAuth credentials remain managed by Claude, not in `.ai/` or a Git remote URL.
+
+Verify from the same directory:
+
+```bash
+claude mcp list
+kcia mcp list --role planner
+kcia doctor
+```
+
+`claude mcp list` must show a connected server. KCIA's “enabled” status and Claude's account
+login alone do not prove Atlassian authorization. For a read-only smoke check, open `claude`
+and ask: “Using Atlassian, read SPRTMNTRPP-146 on softwarecosta.atlassian.net; show its summary
+and status without changing anything.” Exit after verifying the result. `kcia work KEY`
+starts real work and status synchronization, so it is not a connection-only check.
+
+KCIA uses HTTP v2 with `?tools=all` to retain explicit per-tool permissions, including reading
+available Jira transitions. Both registered and generated URLs must match. See the official
+[Atlassian setup](https://support.atlassian.com/atlassian-ai-gateway/docs/get-started-with-the-atlassian-remote-mcp-server/),
+[v2 tool exposure](https://support.atlassian.com/atlassian-ai-gateway/docs/supported-tools/),
+and [Claude MCP scopes/authentication](https://code.claude.com/docs/en/mcp).
+
+### E. Scope Jira and configure its workflow states
+
+Merge this block into `.ai/manifest.yaml`, keeping the generated profiles and other fields:
+
+```yaml
+integrations:
+  jira:
+    enabled: true
+    base_url: https://softwarecosta.atlassian.net/
+    project_keys: [SPRTMNTRPP]
+    sync_status: true
+    states:
+      start: In Progress
+      approval: Waiting for Approval
+      finish: Done
+      parent_finish: Done
+```
+
+Replace the status names with your project's actual destinations. `approval` must be a
+reachable review state; `finish` must be in Jira's done category. These are workflow status
+names, which may differ from board column titles. KCIA requires direct transitions and
+reports missing/ambiguous transitions instead of inventing them.
+
+Add the exact label `kcia` in Jira to each item you authorize. A labelled story does not
+authorize its unlabelled subtasks. KCIA reads the parent/siblings for context, chooses
+eligible subtasks by priority, and only closes a parent after every child is done.
+
+### F. Start and observe the continuous cycle
+
+```bash
+# Review setup changes and commit them as appropriate before this command.
+git status --short
+
+# Set PR target, persist gitflow + PR mode, and process continuously.
+kcia cycle jira --base develop --loop
+```
+
+The terminal remains occupied. In another terminal at the same project root, inspect:
+
+```bash
+kcia cycle jira --status
+kcia work show
+kcia work list
+kcia work logs implementation
+```
+
+The expected sequence is:
+
+```text
+Find labelled item -> read ticket/family -> In Progress
+-> dedicated branch -> analysis and plan -> implement and validate
+-> commit/push -> PR to develop -> Waiting for Approval
+-> repair review observations -> validate/push -> resolve corrected threads
+-> approval of current commit + successful checks -> verified merge
+-> Done -> update base -> next eligible item
+```
+
+Internal plan approval is skipped; PR review remains human. A reviewer approves on GitHub.
+KCIA does not approve its own PR. After new corrections, it waits for approval of the new
+commit. General comments remain visible; only review threads can be resolved. Genuine
+blockers and failed validation still pause work.
+
+### G. Pause, resume, bound the run and recover
+
+| Goal | Action from the project root |
+|---|---|
+| Pause without losing progress | Press Ctrl-C in the cycle terminal. |
+| Resume work, review polling or closure | `kcia cycle jira --loop` |
+| Stop after one item has merged | `kcia cycle jira --loop --max-items 1` |
+| Run continuously with no item cap | `kcia cycle jira --loop --max-items 0` (the default) |
+| Change polling interval | `kcia cycle jira --loop --wait-seconds 30` (persisted) |
+| Process until an approval wait or empty queue, then exit | `kcia cycle jira` |
+| Inspect saved PR URL and closure progress | `kcia cycle jira --status` |
+| Refresh the ticket after Jira edits, while paused | `kcia work fetch` |
+| Answer a blocker, then resume | `kcia work answer "Use the existing API contract"`, then `kcia cycle jira --loop` |
+| Change the next PR target | Finish the active item first, then `kcia cycle jira --base release --loop` using an existing branch. |
+
+`--max-items` counts merged items, not polls or PRs opened. With `--loop`, an empty queue
+keeps polling for new labelled work. Only one cycle process can run per repository;
+separate repositories have separate locks and local state.
+
+If a provider expires its login, reauthenticate that provider and resume. If Atlassian
+reports “not authorized in this non-interactive session”, complete its OAuth flow in
+Claude first. If GitHub checks are pending, the cycle waits; if a PR is closed without a
+merge, Jira remains open and the cycle reports it. Resolve branch conflicts or diverged
+local state before resuming. A failed Jira transition after merge resumes closure without
+creating another PR or repeating successful commits.
+
+For cycle mode, use `kcia cycle jira --loop` to resume PR handling; `kcia done` does not
+replace the review/merge poller. To stop attending work, keep the process stopped and
+remove `kcia` from queued Jira items. `kcia work abort` can discard a task **before** a
+closure checkpoint exists; it keeps code/branch changes and does not undo Jira transitions.
+A pending PR/closure checkpoint prevents abort; stopping the process preserves it.
+There are no `cycle pause`, `cycle stop` or `cycle reset` commands in this release.
+
+[Detailed cycle design and recovery notes](docs/plans/2026-09-25-jira-autocycle.md).
 
 ---
 
@@ -202,9 +479,11 @@ kcia agent pin builder
 kcia agent unpin builder
 ```
 
-`switch` changes the active target used by coordinated calls. `pin` keeps that active
-target from being treated as a temporary detour until you `unpin`; it does not grant quota
-or enable paid overage.
+`switch` changes the configured active target for subsequent coordinated calls.
+`pin`/`unpin` persist a preference; the current coordinator does not enforce that flag.
+Use `automatic: false` on the role to prohibit automatic switching. See the
+[complete fallback example](#b-assign-the-primary-and-fallback-agents-per-project) for YAML,
+project-scoped commands and current quota-monitoring limits.
 
 **Which local model for which role.** The catalog documents three tags; the roles differ in
 what they need, so they are not interchangeable:
@@ -804,31 +1083,15 @@ kcia mcp remove atlassian
 
 ### Adding Jira, end to end
 
-Requires **Atlassian Cloud** (`*.atlassian.net`). The official remote MCP server does not
-support Server or Data Center; for those you would need a third-party MCP with an API token.
+Use the [project-local connection walkthrough](#d-connect-atlassian-in-this-projects-terminal).
+Registration, provider account login and Atlassian OAuth are separate steps. The current
+bundled endpoint is `https://mcp.atlassian.com/v2/mcp?tools=all` over HTTP. Migrating an old
+local v1 entry requires registering the new URL and authenticating again; rerun
+`kcia mcp add atlassian` to refresh KCIA-generated provider configuration.
 
-```bash
-# 1. Enable it for this repository.
-cd /path/to/your/project
-kcia mcp add atlassian
-
-# 2. Log in — kcia stores no credentials, the provider CLI owns the session.
-claude mcp add --transport sse atlassian https://mcp.atlassian.com/v1/sse
-cursor-agent mcp login atlassian          # only if a role runs on Cursor
-
-# 3. Verify the server answers before relying on it.
-claude mcp list
-cursor-agent mcp list-tools atlassian
-
-# 4. Confirm what each role will see.
-kcia mcp list --role planner              # atlassian
-kcia mcp list --role builder              # hidden from builder
-```
-
-Step 3 matters: the Atlassian remote server is still evolving and its URL has changed
-before. If `claude mcp list` does not show it as connected, check Atlassian's current
-documentation and update `url` in `control-plane/mcp/catalog.yaml` — it is a one-line data
-edit, not a code change.
+For interactive work through Cursor, authenticate that provider separately with
+`cursor-agent mcp login atlassian`. Autonomous Jira cycles always use local Claude for
+Jira synchronization, regardless of the coding fallback selected.
 
 ### Working from a ticket instead of a prompt
 
@@ -884,9 +1147,9 @@ integrations:
     project_keys: [PROJ, INFRA]
 ```
 
-Those edits survive `kcia init` — the manifest keeps whatever `integrations` block it
-already had. This only controls *classification*: with `project_keys: [PROJ]`, a bare
-`PROJ-123` is read as an issue rather than as prompt text.
+Those edits survive `kcia init` — the manifest keeps its `integrations` block. In
+interactive mode, `project_keys` controls ticket classification. In autonomous cycle
+mode, it also bounds the Jira search and is required.
 
 ### What the agent may do with Jira
 
@@ -1498,3 +1761,18 @@ Jira transition access is granted only to the dedicated synchronization call;
 the planner's normal MCP allowlist remains read-only. Claude enforces the per-call
 allowlist; Cursor and OpenCode rely on provider/account permissions. KCIA still
 uses the provider's login and does not store Atlassian credentials.
+
+
+### Autonomous Jira cycle
+
+Follow the [complete example](#complete-example-project-setup-fallbacks-atlassian-and-cycle-mode)
+for setup, agent backups, OAuth, states and daily operation. The core commands are:
+
+```bash
+kcia cycle jira --base develop --loop
+kcia cycle jira --status
+```
+
+Only items individually labelled `kcia` are eligible. One PR stays open per item until
+its approved changes merge; then Jira moves to done and the cycle advances. Pause with
+Ctrl-C and resume with `kcia cycle jira --loop`.

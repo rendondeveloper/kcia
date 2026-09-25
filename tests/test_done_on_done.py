@@ -183,3 +183,35 @@ def test_jira_done_selects_next_subtask_and_runs_existing_workflow(repo, monkeyp
     assert ("PR-2", "finish") in transitions
     assert ("PR-1", "parent_finish") not in transitions
     assert jira.load(repo)["delivered"] == ["PR-2"]
+
+
+def test_autocycle_done_opens_pr_and_waits_for_approval(repo: Path, monkeypatch) -> None:
+    from kcia.integrations import jira_cycle as jira
+
+    add_origin(repo)
+    git(repo, "push", "-u", "origin", "develop")
+    _gitflow(repo, on_done="pr")
+    session = Session.create(repo, text="PR-2", mode="ticket", ticket_key="PR-2", title="Implement PR-2")
+    session.data["jira_cycle"] = True
+    session.data["jira_autocycle"] = True
+    for wave in session.waves.values():
+        wave["status"] = "completed"
+    session.save()
+    ensure_task_branch(session)
+    (repo / "src.txt").write_text("x\n", encoding="utf-8")
+    transitions = []
+    monkeypatch.setattr(jira, "transition", lambda *args: transitions.append(args[1:]))
+    _fake_gh(monkeypatch)
+    monkeypatch.chdir(repo)
+
+    result = runner.invoke(app, ["done", "--yes"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    reloaded = Session.load(repo)
+    checkpoint = reloaded.data["done_checkpoint"]
+    assert checkpoint["awaiting_pr_approval"] is True
+    assert checkpoint["approval_transitioned"] is True
+    assert checkpoint["pull_request_url"] == "https://example.com/pull/1"
+    assert ("PR-2", "approval") in transitions
+    assert is_cycle_open(repo)
+    assert session_path(repo).is_file()

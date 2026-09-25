@@ -418,6 +418,12 @@ def _execute(
     if outcome is not None:
         typer.echo(outcome.message)
 
+    if session.data.get("jira_autocycle"):
+        from kcia.git.repo import current_branch, GitError
+        branch = session.task.get("branch")
+        if not branch or branch == session.task.get("base_branch") or current_branch(session.repo_root) != branch:
+            raise GitError("Autocycle could not establish its dedicated task branch.")
+
     reporter = _ProgressReporter(
         enabled=not quiet, periodic_updates=periodic_updates
     )

@@ -7,6 +7,7 @@ from kcia.commands.ask import ask
 from kcia.commands.auth import app as auth_app
 from kcia.commands.branch import app as branch_app
 from kcia.commands.commit import commit_command
+from kcia.commands.cycle import app as cycle_app
 from kcia.commands.doctor import doctor
 from kcia.commands.init import init
 from kcia.commands.mcp import app as mcp_app
@@ -40,6 +41,7 @@ app.add_typer(profile_app, name="profile")
 app.add_typer(session_app, name="session")
 app.add_typer(auth_app, name="auth")
 app.add_typer(branch_app, name="branch")
+app.add_typer(cycle_app, name="cycle")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(skill_app, name="skill")
 

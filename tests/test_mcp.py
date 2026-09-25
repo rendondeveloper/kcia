@@ -81,7 +81,8 @@ def test_claude_config_is_written_only_for_allowed_roles(repo: Path) -> None:
     planner = render_claude_config(repo, "planner", repo / "planner.json")
     assert planner is not None
     payload = json.loads(planner.read_text(encoding="utf-8"))
-    assert payload["mcpServers"]["atlassian"]["type"] == "sse"
+    assert payload["mcpServers"]["atlassian"]["type"] == "http"
+    assert payload["mcpServers"]["atlassian"]["url"] == "https://mcp.atlassian.com/v2/mcp?tools=all"
 
     assert render_claude_config(repo, "builder", repo / "builder.json") is None
     assert not (repo / "builder.json").exists()
@@ -210,6 +211,10 @@ def test_atlassian_allowlist_excludes_every_write_tool() -> None:
     offenders = [t for t in tools if any(word.lower() in t.lower() for word in forbidden)]
     assert offenders == [], offenders
     assert "mcp__atlassian__getJiraIssue" in tools
+    assert "mcp__atlassian__listJiraIssueTransitions" in tools
+    assert "mcp__atlassian__listJiraIssueComments" in tools
+    assert "mcp__atlassian__executeWrite" not in tools
+    assert "mcp__atlassian__executeDestructive" not in tools
     # Granting the whole server would pull the write tools back in.
     assert "mcp__atlassian" not in tools
 

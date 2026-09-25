@@ -131,7 +131,7 @@ def _auto_log_session(
     typer.echo(f"Session {entry.id} saved.")
 
 
-def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> None:
+def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> str:
     if not gh_available():
         typer.echo(
             "`gh` is not installed, so no pull request was opened. "
@@ -151,7 +151,7 @@ def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> None:
         for match in matches if isinstance(matches, list) else []:
             if not base or match.get("baseRefName") == base:
                 typer.echo(match["url"])
-                return
+                return str(match["url"])
     args = [GH_BIN, "pr", "create", "--title", title, "--body", "", "--head", branch]
     if base:
         args += ["--base", base]
@@ -162,6 +162,8 @@ def _open_pr(repo: Path, branch: str, title: str, base: str | None) -> None:
     url = result.stdout.strip()
     if url:
         typer.echo(url)
+        return url
+    return ""
 
 
 def _run_step(label: str, action, *, repo: Path | None = None) -> None:
@@ -195,12 +197,13 @@ def _push_branch(repo: Path, branch: str, *, remote: str) -> None:
     typer.echo(f"Pushed `{branch}`.")
 
 
-def _finish_current_branch(repo: Path, branch: str) -> None:
+def _finish_current_branch(repo: Path, branch: str) -> str | None:
     remote = _remote_name(repo)
     _push_branch(repo, branch, remote=remote)
+    return None
 
 
-def _finish_gitflow_pr(repo: Path, branch: str, title: str, base: str) -> None:
+def _finish_gitflow_pr(repo: Path, branch: str, title: str, base: str) -> str:
     if not gh_available():
         typer.echo(
             "`gh` is not installed, so the pull request could not be opened. "
@@ -211,11 +214,12 @@ def _finish_gitflow_pr(repo: Path, branch: str, title: str, base: str) -> None:
     _push_branch(repo, branch, remote=remote)
     typer.echo(f"Opening PR to `{base}`")
     with StepProgress(f"Opening PR to `{base}`"):
-        _open_pr(repo, branch, title, base)
+        url = _open_pr(repo, branch, title, base)
     typer.echo(f"Opened PR to `{base}`.")
+    return url
 
 
-def _finish_gitflow_merge(repo: Path, branch: str, base: str) -> None:
+def _finish_gitflow_merge(repo: Path, branch: str, base: str) -> str | None:
     if branch == base:
         typer.echo(
             f"Already on `{base}`; nothing to merge. Push this branch or switch "
@@ -244,6 +248,7 @@ def _finish_gitflow_merge(repo: Path, branch: str, base: str) -> None:
             lambda: delete_remote_branch(repo, branch, remote=remote), repo=repo,
         )
     typer.echo(f"Merged `{branch}` into `{base}`.")
+    return None
 
 
 def _after_commit(
@@ -252,7 +257,7 @@ def _after_commit(
     branch: str,
     title: str,
     session_base: str | None,
-) -> None:
+) -> str | None:
     flow = load_flow(repo)
     if flow.uses_gitflow:
         base = session_base or flow.base_branch
@@ -260,11 +265,9 @@ def _after_commit(
             typer.echo("Git flow is on, but no base branch is configured.")
             raise typer.Exit(code=1)
         if flow.on_done == ON_DONE_MERGE:
-            _finish_gitflow_merge(repo, branch, base)
-            return
-        _finish_gitflow_pr(repo, branch, title, base)
-        return
-    _finish_current_branch(repo, branch)
+            return _finish_gitflow_merge(repo, branch, base)
+        return _finish_gitflow_pr(repo, branch, title, base)
+    return _finish_current_branch(repo, branch)
 
 
 def _complete_saved_done(repo: Path, session: Session) -> None:
@@ -273,14 +276,39 @@ def _complete_saved_done(repo: Path, session: Session) -> None:
     from kcia.integrations.jira_cycle import JiraError
 
     checkpoint = session.data["done_checkpoint"]
+    flow = load_flow(repo)
+    auto_pr_cycle = (
+        bool(session.data.get("jira_autocycle"))
+        and flow.uses_gitflow
+        and flow.on_done != ON_DONE_MERGE
+    )
+    if auto_pr_cycle and checkpoint.get("awaiting_pr_approval") and not checkpoint.get("merged"):
+        url = checkpoint.get("pull_request_url") or "the pull request"
+        typer.echo(f"Autocycle is waiting for PR approval: {url}")
+        return
     try:
         if not checkpoint.get("git_finished"):
-            _after_commit(repo, branch=checkpoint["branch"], title=checkpoint["title"],
-                          session_base=checkpoint.get("base"))
+            pr_url = _after_commit(repo, branch=checkpoint["branch"], title=checkpoint["title"],
+                                   session_base=checkpoint.get("base"))
             refreshed = Session.load(repo)
             checkpoint.update(refreshed.data.get("done_checkpoint", {}))
+            if pr_url:
+                checkpoint["pull_request_url"] = pr_url
             checkpoint["git_finished"] = True
             session.save()
+        if auto_pr_cycle:
+            if not checkpoint.get("pull_request_url"):
+                raise GitError("The PR URL could not be verified; Jira remains open.")
+            from kcia.integrations import jira_cycle
+
+            if not checkpoint.get("approval_transitioned"):
+                jira_cycle.transition(repo, session.task["ticket_key"], "approval")
+                checkpoint["approval_transitioned"] = True
+            checkpoint["awaiting_pr_approval"] = True
+            session.save()
+            url = checkpoint.get("pull_request_url") or "the pull request"
+            typer.echo(f"Autocycle opened the PR and is waiting for approval: {url}")
+            return
         if session.data.get("jira_cycle") and not checkpoint.get("jira_finished"):
             jira_commands.finish(repo, session)
             checkpoint["jira_finished"] = True

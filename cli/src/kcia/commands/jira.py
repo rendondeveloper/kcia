@@ -12,7 +12,8 @@ from kcia.waves.session import Session, clear_task_context, context_dir, session
 
 
 def select(repo: Path, *, key: str | None = None, subtask: str | None = None,
-           profiles: list[str] | None = None, scope: list[str] | None = None) -> Session | None:
+           profiles: list[str] | None = None, scope: list[str] | None = None,
+           auto: bool = False, required_label: str | None = None) -> Session | None:
     cycle = jira.load(repo)
     if session_path(repo).exists():
         raise jira.JiraError("An active task exists. Finish or abort it before starting a Jira task.")
@@ -32,6 +33,8 @@ def select(repo: Path, *, key: str | None = None, subtask: str | None = None,
     jira.save(repo, cycle)
     if snapshot.subtasks:
         candidates = jira.pending(snapshot, cycle)
+        if required_label:
+            candidates = [i for i in candidates if required_label in i.labels]
         if not candidates:
             if all(i.category == "done" for i in snapshot.subtasks):
                 jira.transition(repo, cycle["parent"], "parent_finish")
@@ -48,6 +51,8 @@ def select(repo: Path, *, key: str | None = None, subtask: str | None = None,
             selected = next((i for i in candidates if i.key == subtask), None)
             if selected is None:
                 raise jira.JiraError("The requested subtask is not pending under this parent.")
+        elif auto:
+            selected = candidates[0]
         elif not sys.stdin.isatty():
             typer.echo("Selection saved. Run `kcia work --subtask KEY` to continue without an interactive terminal.")
             return None
@@ -65,6 +70,10 @@ def select(repo: Path, *, key: str | None = None, subtask: str | None = None,
             typer.echo("This Jira issue is already complete.")
             return None
         selected = snapshot.parent
+    if required_label and required_label not in selected.labels:
+        raise jira.JiraError(f"{selected.key} no longer has label {required_label}.")
+    if auto:
+        cycle["autonomous"] = True
     # Save the choice before remote effects, so a failed transition is resumable.
     cycle.update(active=selected.key, phase="starting")
     jira.save(repo, cycle)
@@ -72,6 +81,8 @@ def select(repo: Path, *, key: str | None = None, subtask: str | None = None,
     session = Session.create(repo, text=selected.key, mode="ticket", ticket_key=selected.key,
                              title=selected.summary, active_profiles=cycle["profiles"], scope=cycle["scope"])
     session.data["jira_cycle"] = True
+    if auto:
+        session.data["jira_autocycle"] = True
     session.save()
     (context_dir(repo) / "ticket.md").write_text(jira.context(snapshot, selected), encoding="utf-8")
     start(repo)
@@ -94,7 +105,8 @@ def finish(repo: Path, session: Session) -> None:
         return
     if not cycle or cycle.get("active") != session.task["ticket_key"]:
         raise jira.JiraError("Jira cycle does not match the active session.")
-    jira.transition(repo, cycle["active"], "finish")
+    event = "merged" if session.data.get("jira_autocycle") else "finish"
+    jira.transition(repo, cycle["active"], event)
     if cycle["active"] not in cycle["delivered"]:
         cycle["delivered"].append(cycle["active"])
     cycle.update(active=None, phase="select")

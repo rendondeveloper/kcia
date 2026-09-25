@@ -9,8 +9,9 @@ schema_version: 1
 servers:
   atlassian:
     display_name: "Atlassian (Jira + Confluence)"
-    transport: sse
-    url: "https://mcp.atlassian.com/v1/sse"
+    transport: http
+    # Flat tool exposure preserves per-tool allowlists; no generic execute grants.
+    url: "https://mcp.atlassian.com/v2/mcp?tools=all"
     cloud_only: true
     roles: [planner]
     description: "Read issues and pages to understand and plan the work."
@@ -22,27 +23,30 @@ servers:
     allowed_tools:
       - mcp__atlassian__atlassianUserInfo
       - mcp__atlassian__getAccessibleAtlassianResources
-      - mcp__atlassian__getVisibleJiraProjects
+      - mcp__atlassian__listJiraProjects
       - mcp__atlassian__getJiraIssue
-      - mcp__atlassian__getJiraIssueRemoteIssueLinks
-      - mcp__atlassian__getJiraProjectIssueTypesMetadata
-      - mcp__atlassian__getTransitionsForJiraIssue
+      - mcp__atlassian__listJiraIssueRemoteIssueLinks
+      - mcp__atlassian__listJiraProjectIssueTypesMetadata
+      - mcp__atlassian__listJiraIssueTransitions
       - mcp__atlassian__searchJiraIssuesUsingJql
+      - mcp__atlassian__listJiraIssueComments
       - mcp__atlassian__lookupJiraAccountId
-      - mcp__atlassian__search
-      - mcp__atlassian__fetch
-      - mcp__atlassian__getConfluencePage
-      - mcp__atlassian__getConfluenceSpaces
-      - mcp__atlassian__getPagesInConfluenceSpace
-      - mcp__atlassian__getConfluencePageFooterComments
-      - mcp__atlassian__searchConfluenceUsingCql
+      - mcp__atlassian__getConfluenceContent
+      - mcp__atlassian__listConfluenceSpaces
+      - mcp__atlassian__listConfluenceContent
+      - mcp__atlassian__listConfluenceComments
+      - mcp__atlassian__searchConfluence
     auth_hint: >-
-      Browser OAuth. Claude Code: `claude mcp add --transport sse atlassian
-      https://mcp.atlassian.com/v1/sse` and follow the login. Cursor: `cursor-agent mcp
-      login atlassian`. Requires Atlassian Cloud; Server/Data Center is not supported.
+      From this project, register once: `claude mcp add --scope local --transport
+      http atlassian 'https://mcp.atlassian.com/v2/mcp?tools=all'`. Then authenticate
+      separately with `claude mcp login atlassian`, or open `claude` and use `/mcp`.
+      An existing server does not prove OAuth is connected. After migrating from
+      v1, authenticate again. Cursor: `cursor-agent mcp login atlassian`.
+      Requires Atlassian Cloud; Server/Data Center is not supported.
     verify_hint: >-
-      Confirm the current URL in Atlassian's documentation before relying on
-      it: the remote server is still evolving and the path has changed before.
+      Run `claude mcp list` from this project and confirm Atlassian is connected.
+      Both Claude and KCIA must use the same URL, including ?tools=all.
+      Setup: https://support.atlassian.com/atlassian-ai-gateway/docs/get-started-with-the-atlassian-remote-mcp-server/
 
   github:
     display_name: "GitHub"

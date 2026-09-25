@@ -5,6 +5,29 @@ entries are headed `## control-plane X.Y.Z`. See [RELEASING.md](RELEASING.md).
 
 ## Unreleased
 
+## 1.1.1 — 2026-09-25
+
+### CLI and bundled MCP configuration
+
+- Added a complete README walkthrough for project setup, primary/fallback agents,
+  explicit automatic routing, Atlassian OAuth, and Jira cycle operation/recovery.
+- Updated Atlassian MCP to v2 HTTP with flat tool exposure and current read-tool
+  names. Registration and OAuth login are separate documented steps. Existing v1
+  connections need to be registered with the new URL and authenticated again.
+
+## 1.1.0 — 2026-09-25
+
+### CLI
+
+- Added `kcia cycle jira` for local autonomous work on individually labelled `kcia`
+  items, scoped to configured Jira projects and the project's Claude MCP connection.
+- Configure gitflow PR targets with `--base`; reuse the existing validated workflow
+  without internal approval prompts. Keep one PR and session per Jira item until merge.
+- Read and repair review observations, push corrections, and resolve only verified
+  conversations. Require approval of the current commit and successful checks before merge.
+- Persist approval, repair and closure progress; confirm the remote merge before marking
+  Jira done and advancing. Add per-project process locking and status inspection.
+
 ## 1.0.0 — 2026-09-25
 
 ### CLI

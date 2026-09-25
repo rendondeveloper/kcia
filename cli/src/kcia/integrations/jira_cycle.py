@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import replace
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
@@ -23,6 +26,19 @@ from kcia.waves.progress import StepProgress
 from kcia.waves.session import load_manifest_raw, runs_dir
 
 
+_LOCAL_CONNECTION = ContextVar("jira_local_connection", default=False)
+
+
+@contextmanager
+def local_connection():
+    """Keep Jira MCP on local Claude while coding roles retain their fallback policy."""
+    token = _LOCAL_CONNECTION.set(True)
+    try:
+        yield
+    finally:
+        _LOCAL_CONNECTION.reset(token)
+
+
 class JiraError(ValueError):
     """A remote operation could not be verified."""
 
@@ -37,6 +53,9 @@ class Issue(BaseModel):
     category: str = Field(pattern=r"^(new|indeterminate|done)$")
     priority: str
     priority_rank: int = Field(ge=0)
+    labels: list[str] = Field(default_factory=list)
+    parent_key: str | None = None
+    is_subtask: bool = False
 
     @field_validator("acceptance_criteria", "comments", mode="before")
     @classmethod
@@ -54,6 +73,11 @@ class Issue(BaseModel):
 class Snapshot(BaseModel):
     parent: Issue
     subtasks: list[Issue]
+    complete: bool
+
+
+class IssueSearch(BaseModel):
+    issues: list[Issue]
     complete: bool
 
 
@@ -114,6 +138,13 @@ def request(repo: Path, prompt: str, *, transition: bool = False) -> dict:
     if not atlassian_available(repo):
         raise JiraError("Enable Jira with `kcia mcp add atlassian`.")
     agent = resolve_agents(repo)["planner"]
+    cycle = load(repo) or {}
+    local_only = _LOCAL_CONNECTION.get() or (cycle.get("autonomous") and cycle.get("phase") != "complete")
+    if local_only:
+        if agent.provider != "claude":
+            raise JiraError("Autonomous Jira access requires local Claude.")
+        # Ignore a persisted coding fallback/pin for the project Jira connection.
+        agent = replace(agent, active_index=0, fallbacks=(), automatic=False)
     adapter = get_adapter(agent.provider)
     if agent.provider not in {"claude", "cursor", "opencode"} or adapter.locate() is None:
         raise JiraError("The planner needs an installed MCP-capable provider.")
@@ -155,6 +186,7 @@ def request(repo: Path, prompt: str, *, transition: bool = False) -> dict:
                     policy=RoutingPolicy(
                         automatic=bool(getattr(agent, "automatic", False))
                         and not transition
+                        and not local_only
                     ),
                     runner=run_provider,
                 ).run(
@@ -187,7 +219,8 @@ def fetch(repo: Path, key: str) -> Snapshot:
         '{"parent":issue,"subtasks":[issue],"complete":true}. Each issue has key, '
         "summary, description, acceptance_criteria, relevant comments (strings), status "
         "(name), category (Jira statusCategory.key: new/indeterminate/done), priority "
-        "(name), priority_rank (integer, 0 highest, based on the project's actual priority "
+        "(name), labels (array of strings), parent_key (actual parent key or null), is_subtask (boolean), "
+        "priority_rank (integer, 0 highest, based on the project's actual priority "
         "ordering; missing priority last). Preserve source wording. Set complete=false "
         "if any page or issue is inaccessible. No invented data."
     ))
@@ -202,6 +235,44 @@ def fetch(repo: Path, key: str) -> Snapshot:
     return snapshot
 
 
+def search_labeled(repo: Path, *, label: str = "kcia", limit: int = 0) -> list[Issue]:
+    config = settings(repo)
+    project_keys = config.get("project_keys") or []
+    if not isinstance(project_keys, list):
+        raise JiraError("integrations.jira.project_keys must be a list.")
+    project_filter = (
+        f" in projects {json.dumps(project_keys)}" if project_keys else ""
+    )
+    if not project_keys:
+        raise JiraError("Configure integrations.jira.project_keys to scope autonomous work.")
+    amount = f"up to {limit}" if limit > 0 else "all"
+    data = request(repo, (
+        f"Find {amount} Jira issues{project_filter} with label "
+        f"{json.dumps(label)} that are not Done. Include stories, tasks, and subtasks. "
+        "Order by Jira priority DESC, then key ASC. Paginate if needed "
+        "until this limit is reached or no more issues exist. Do not transition anything. "
+        "Return "
+        '{"issues":[issue],"complete":true}. Each issue has key, summary, description, '
+        "acceptance_criteria, relevant comments (strings), status (name), category "
+        "(Jira statusCategory.key), priority (name), labels (array of strings), "
+        "parent_key (actual parent key or null), is_subtask (boolean), and priority_rank (integer, 0 highest). "
+        "Set complete=false if search results or issue details are inaccessible."
+    ))
+    try:
+        search = IssueSearch.model_validate(data)
+    except ValueError as exc:
+        raise JiraError(f"Invalid Jira search response: {exc}") from exc
+    if not search.complete:
+        raise JiraError("Incomplete Jira search; autonomous work was not started.")
+    if len({i.key for i in search.issues}) != len(search.issues):
+        raise JiraError("Duplicate Jira search results.")
+    return sorted(
+        (issue for issue in search.issues if issue.category != "done"
+         and label in issue.labels and issue.key.rsplit("-", 1)[0] in project_keys),
+        key=lambda issue: (issue.priority_rank, issue.key),
+    )
+
+
 def transition(repo: Path, key: str, event: str) -> None:
     config = settings(repo)
     if config.get("sync_status", True) is False:
@@ -209,14 +280,24 @@ def transition(repo: Path, key: str, event: str) -> None:
     states = config.get("states") or {}
     if not isinstance(states, dict):
         raise JiraError("integrations.jira.states must be a mapping.")
-    target = states.get(event)
+    target = states.get("finish" if event == "merged" else event)
+    if event == "approval" and not target:
+        target = "Waiting for Approval"
     if event == "finish" and not target:
         from kcia.git.flow import load_flow, ON_DONE_MERGE
         flow = load_flow(repo)
         if flow.uses_gitflow and flow.on_done != ON_DONE_MERGE:
             target = "In Review"
-    categories = {"start": "indeterminate", "finish": "done", "parent_finish": "done"}
+    categories = {
+        "start": "indeterminate",
+        "approval": "indeterminate",
+        "finish": "done",
+        "parent_finish": "done",
+        "merged": "done",
+    }
     desired = {"status": target} if target else {"category": categories[event]}
+    if event == "merged":
+        desired["category"] = "done"
     data = request(repo, (
         f"For issue {json.dumps(key)}, ensure destination {json.dumps(desired)}. "
         "Read current state first; if already there, do not transition. Otherwise read "

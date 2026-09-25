@@ -180,6 +180,32 @@ def test_interactive_default_is_highest_priority(repo, monkeypatch):
     assert prompts[0]["default"] == 1
 
 
+def test_auto_selection_uses_highest_priority_without_prompt(repo, monkeypatch):
+    monkeypatch.setattr(jira, "fetch", lambda *a: snapshot(issue("PR-3", 3), issue("PR-2", 0)))
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    prompts = []
+    monkeypatch.setattr(commands.typer, "prompt", lambda *a, **kw: prompts.append(kw))
+    selected = commands.select(repo, key="PR-1", auto=True)
+    assert selected.task["ticket_key"] == "PR-2"
+    assert prompts == []
+
+
+def test_labeled_search_orders_pending_issues(repo, monkeypatch):
+    monkeypatch.setattr(jira, "settings", lambda *a: {"project_keys": ["PR"]})
+    data = {
+        "complete": True,
+        "issues": [
+            issue("PR-3", rank=2).model_dump(),
+            issue("PR-2", rank=0).model_dump(),
+            issue("PR-4", rank=1, category="done").model_dump(),
+        ],
+    }
+    for entry in data["issues"]:
+        entry["labels"] = ["kcia"]
+    monkeypatch.setattr(jira, "request", lambda *a, **kw: data)
+    assert [item.key for item in jira.search_labeled(repo, label="kcia")] == ["PR-2", "PR-3"]
+
+
 def test_transition_tool_only_granted_to_sync(repo, monkeypatch):
     from types import SimpleNamespace
     from kcia.providers.base import RunResult
