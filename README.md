@@ -154,11 +154,15 @@ that line before starting a task.
 ```bash
 kcia agent models              # every provider, its models, tier and what each is best for
 kcia agent models claude       # one provider
+kcia agent models opencode     # curated OpenCode Go fallback profile
+kcia agent models opencode --all
 kcia agent models --json       # same data, scriptable
 kcia agent models --live       # ask the installed CLI and flag stale catalog entries
 
 kcia agent set planner claude --model claude-opus-5
 kcia agent set builder cursor --model composer-2.5
+kcia agent fallback add planner opencode --model opencode-go/glm-5.3
+kcia agent fallback add builder opencode --model opencode-go/glm-5.3-flash
 kcia agent show
 
 # Local models via Ollama — any tag you have pulled works; no catalog edit required.
@@ -180,6 +184,27 @@ exactly as `ollama list` shows it (`qwen3:14b`, `qwen2.5-coder:14b`,
 values; with `model_source: live` any pulled tag is accepted. For hosted providers the
 catalog is curated by hand, so `kcia agent models --live` compares it against the installed
 CLI (`cursor-agent --list-models`, `GET /api/tags` for Ollama) and exits non-zero on drift.
+
+**OpenCode Go fallbacks.** By default, `kcia agent models opencode` shows the curated Go
+fallback profile, not every Zen/free catalog entry. The visible Go list is:
+`opencode-go/glm-5.3`, `opencode-go/glm-5.2`, `opencode-go/glm-5.3-flash`, and
+`opencode-go/minimax-m3`. Use `--all` when you only want to inspect the broader catalog.
+KCIA never substitutes an `opencode/*` model for an `opencode-go/*` fallback silently.
+
+Fallbacks are ordered per role and used only when routing is enabled for that route and a
+provider reports a confirmed quota exhaustion. Manual controls are local:
+
+```bash
+kcia agent status
+kcia agent fallback list
+kcia agent switch builder --to fallback --index 1
+kcia agent pin builder
+kcia agent unpin builder
+```
+
+`switch` changes the active target used by coordinated calls. `pin` keeps that active
+target from being treated as a temporary detour until you `unpin`; it does not grant quota
+or enable paid overage.
 
 **Which local model for which role.** The catalog documents three tags; the roles differ in
 what they need, so they are not interchangeable:
@@ -1264,8 +1289,10 @@ picks up the change with no reinstall.
 
 ### 5. How Python talks to providers
 
-`providers/runner.py` is provider-agnostic. Every call site goes through `call_provider`,
-which picks one of two execution modes:
+`providers/runner.py` is provider-agnostic. High-level operations route through
+`execution/coordinator.py`, which chooses the active role target and eligible fallbacks.
+The final provider invocation still goes through `call_provider`, which picks one of two
+execution modes:
 
 **Subprocess (Claude Code, Cursor, OpenCode).** The adapter builds an argv; the runner
 spawns it with `subprocess.Popen`, writes the prompt to **stdin** (never as an argument —
