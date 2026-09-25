@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import Callable
 
 from kcia.config import resolve_agents
+from kcia.execution.coordinator import ExecutionCoordinator
+from kcia.execution.models import AgentTarget
+from kcia.execution.routing import RoutingPolicy
 from kcia.mcp.config import (
     CURSOR_CONFIG,
     OPENCODE_CONFIG,
@@ -21,10 +24,10 @@ from kcia.mcp.config import (
     servers_for_role,
 )
 from kcia.paths import control_plane_root
-from kcia.providers.base import RunRequest
+from kcia.providers.base import ProviderAdapter, RunRequest
 from kcia.providers.registry import get_adapter
 from kcia.providers.events import StreamEvent
-from kcia.providers.runner import call_provider, run_provider
+from kcia.providers.runner import run_provider
 from kcia.render import render_template
 from kcia.waves.blocked import detect_blocked
 from kcia.waves.session import context_dir, runs_dir
@@ -77,37 +80,41 @@ def fetch_ticket(
     if adapter.locate() is None:
         return FetchResult(error=f"`{agent.provider}` is not installed.")
 
-    if agent.provider == "claude":
-        mcp_config = render_claude_config(
-            repo_root, FETCH_ROLE, runs_dir(repo_root) / f"mcp-{FETCH_ROLE}.json"
-        )
-    elif agent.provider == "opencode":
-        mcp_config = repo_root / OPENCODE_CONFIG
-    else:
-        mcp_config = repo_root / CURSOR_CONFIG
-
     prompt = render_template(
         control_plane_root() / "templates", "ticket-fetch.md.j2", ticket_key=ticket_key
     )
-    request = RunRequest(
-        prompt=prompt,
-        model=agent.model,
-        allow_edits=False,
-        stream=adapter.capabilities.supports_streaming,
-        workspace_dirs=[repo_root],
-        session_id=None,
-        resume=False,
-        effort=agent.effort,
-        allowed_tools=None,
-        disallowed_tools=None,
-        cwd=repo_root,
-        mcp_config=mcp_config,
-        mcp_tools=allowed_tools_for_role(repo_root, FETCH_ROLE),
-    )
+
+    def make_request(target: AgentTarget, adapter: ProviderAdapter) -> RunRequest:
+        mcp_config = _mcp_config(repo_root, target.provider)
+        return RunRequest(
+            prompt=prompt,
+            model=target.model,
+            allow_edits=False,
+            stream=adapter.capabilities.supports_streaming,
+            workspace_dirs=[repo_root],
+            session_id=None,
+            resume=False,
+            effort=target.effort,
+            allowed_tools=None,
+            disallowed_tools=None,
+            cwd=repo_root,
+            mcp_config=mcp_config,
+            mcp_tools=allowed_tools_for_role(repo_root, FETCH_ROLE),
+        )
 
     runner = provider_runner or run_provider
     try:
-        result = call_provider(runner, adapter, request, on_event, should_cancel)
+        coordinated = ExecutionCoordinator(
+            policy=RoutingPolicy(automatic=agent.automatic),
+            runner=runner,
+        ).run(
+            agent,
+            make_request,
+            operation_id=f"ticket-fetch:{ticket_key}",
+            on_event_for_target=lambda _target: on_event,
+            should_cancel=should_cancel,
+        )
+        result = coordinated.result
     except Exception as exc:  # noqa: BLE001 - surfaced to the user, never fatal
         return FetchResult(error=f"the provider call failed: {exc}")
 
@@ -126,3 +133,13 @@ def fetch_ticket(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text + "\n", encoding="utf-8")
     return FetchResult(path=path)
+
+
+def _mcp_config(repo_root: Path, provider: str) -> Path:
+    if provider == "claude":
+        return render_claude_config(
+            repo_root, FETCH_ROLE, runs_dir(repo_root) / f"mcp-{FETCH_ROLE}.json"
+        )
+    if provider == "opencode":
+        return repo_root / OPENCODE_CONFIG
+    return repo_root / CURSOR_CONFIG

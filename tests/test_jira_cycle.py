@@ -202,6 +202,69 @@ def test_transition_tool_only_granted_to_sync(repo, monkeypatch):
     assert "Bash" in requests[1].disallowed_tools
 
 
+def test_jira_read_falls_back_on_confirmed_quota_failure(repo, monkeypatch):
+    from types import SimpleNamespace
+
+    from kcia.config import AgentSetting
+    from kcia.providers.base import (
+        ProviderCapabilities,
+        ProviderFailure,
+        ProviderFailureKind,
+        RunResult,
+    )
+
+    agent = SimpleNamespace(
+        provider="cursor",
+        model="composer-2.5",
+        effort=None,
+        automatic=True,
+        fallbacks=(
+            AgentSetting(
+                provider="opencode",
+                model="opencode-go/glm-5.3",
+                billing_profile="opencode-go",
+            ),
+        ),
+    )
+
+    def fake_adapter(provider):
+        return SimpleNamespace(
+            locate=lambda: f"/test/{provider}",
+            capabilities=ProviderCapabilities(
+                supports_streaming=True,
+                supports_sessions=True,
+                supports_effort=True,
+                supports_tool_restriction=False,
+                supports_mcp_config=True,
+            ),
+        )
+
+    captured_models = []
+
+    def runner(adapter, request, **kwargs):
+        captured_models.append(request.model)
+        if request.model == "composer-2.5":
+            return RunResult(
+                output_text="",
+                exit_code=1,
+                provider_failure=ProviderFailure(
+                    kind=ProviderFailureKind.QUOTA_EXHAUSTED,
+                    message="quota exhausted",
+                ),
+            )
+        return RunResult(output_text='{"ok":true}', exit_code=0)
+
+    monkeypatch.setattr(jira, "atlassian_available", lambda *a: True)
+    monkeypatch.setattr(jira, "resolve_agents", lambda *a: {"planner": agent})
+    monkeypatch.setattr(jira, "get_adapter", fake_adapter)
+    monkeypatch.setattr("kcia.execution.coordinator.get_adapter", fake_adapter)
+    monkeypatch.setattr(jira, "allowed_tools_for_role", lambda *a: ["mcp__atlassian__getJiraIssue"])
+    monkeypatch.setattr(jira, "run_provider", runner)
+
+    assert jira.request(repo, "read") == {"ok": True}
+    assert captured_models == ["composer-2.5", "opencode-go/glm-5.3"]
+
+
 def test_git_steps_resume_after_a_failure(repo, monkeypatch):
     from kcia.commands import commit
     session = Session.create(repo, text="PR-2", mode="ticket", ticket_key="PR-2")

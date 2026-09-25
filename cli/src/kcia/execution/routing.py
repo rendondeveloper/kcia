@@ -126,7 +126,7 @@ def targets_for_route(route: ResolvedAgent) -> tuple[AgentTarget, ...]:
             effort=item.effort,
             billing_profile=item.billing_profile,
         )
-        for item in route.fallbacks
+        for item in getattr(route, "fallbacks", ())
     )
     return (primary, *fallbacks)
 

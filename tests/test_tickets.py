@@ -5,12 +5,19 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from kcia.config import save_repo_agents
 from kcia.integrations.tickets import atlassian_available, fetch_ticket
 from kcia.mcp.config import save_enabled
-from kcia.providers.base import RunResult
+from kcia.providers.base import (
+    ProviderCapabilities,
+    ProviderFailure,
+    ProviderFailureKind,
+    RunResult,
+)
 from kcia.waves.session import Session, context_dir
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +53,22 @@ def _runner(text: str, seen: dict | None = None):
     return run
 
 
+def _fake_adapter(provider: str):
+    return SimpleNamespace(
+        id=provider,
+        display_name=provider,
+        executable=provider,
+        capabilities=ProviderCapabilities(
+            supports_streaming=True,
+            supports_sessions=True,
+            supports_effort=True,
+            supports_tool_restriction=False,
+            supports_mcp_config=True,
+        ),
+        locate=lambda: f"/usr/bin/{provider}",
+    )
+
+
 def test_requires_the_atlassian_server(repo: Path) -> None:
     assert not atlassian_available(repo)
     result = fetch_ticket(repo, "PROJ-123", provider_runner=_runner(TICKET))
@@ -60,6 +83,48 @@ def test_writes_the_issue_into_the_task_context(repo: Path) -> None:
     assert result.ok
     assert result.path == context_dir(repo) / "ticket.md"
     assert "Show a progress indicator" in result.path.read_text(encoding="utf-8")
+
+
+def test_fetch_ticket_falls_back_on_confirmed_quota_failure(repo: Path) -> None:
+    save_enabled(repo, {"atlassian": {}})
+    save_repo_agents(
+        repo,
+        {
+            "planner": {
+                "primary": {"provider": "cursor", "model": "composer-2.5"},
+                "fallbacks": [
+                    {
+                        "provider": "opencode",
+                        "model": "opencode-go/glm-5.3",
+                        "billing_profile": "opencode-go",
+                    }
+                ],
+                "automatic": True,
+            }
+        },
+    )
+    captured_models: list[str] = []
+
+    def runner(adapter, req, **_kwargs):
+        captured_models.append(req.model)
+        if req.model == "composer-2.5":
+            return RunResult(
+                output_text="",
+                exit_code=1,
+                provider_failure=ProviderFailure(
+                    kind=ProviderFailureKind.QUOTA_EXHAUSTED,
+                    message="quota exhausted",
+                ),
+            )
+        return RunResult(output_text=TICKET, exit_code=0)
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("kcia.integrations.tickets.get_adapter", _fake_adapter)
+        monkeypatch.setattr("kcia.execution.coordinator.get_adapter", _fake_adapter)
+        result = fetch_ticket(repo, "PROJ-123", provider_runner=runner)
+
+    assert result.ok
+    assert captured_models == ["composer-2.5", "opencode-go/glm-5.3"]
 
 
 def test_the_fetch_is_read_only_and_carries_the_mcp_config(repo: Path) -> None:
