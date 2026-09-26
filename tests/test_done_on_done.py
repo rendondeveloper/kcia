@@ -58,12 +58,16 @@ def _current_branch_flow(repo: Path) -> None:
     )
 
 
-def _fake_gh(monkeypatch) -> None:
+def _fake_gh(monkeypatch, *, pr_edit_calls: list | None = None) -> None:
     monkeypatch.setattr("kcia.commands.commit.gh_available", lambda: True)
     real_run = subprocess.run
 
     def fake_run(args, **kwargs):
         if args and args[0] == "gh":
+            if len(args) >= 3 and args[1] == "pr" and args[2] == "edit":
+                if pr_edit_calls is not None:
+                    pr_edit_calls.append(list(args))
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
             return subprocess.CompletedProcess(
                 args, 0, stdout="https://example.com/pull/1\n", stderr=""
             )
@@ -92,6 +96,39 @@ def test_current_branch_done_fails_without_a_remote(repo: Path, monkeypatch) -> 
     result = runner.invoke(app, ["done", "--yes"], catch_exceptions=False)
     assert result.exit_code == 1
     assert "No git remote configured" in result.output
+
+
+def test_gitflow_pr_with_reviewers_requests_github_review(repo: Path, monkeypatch) -> None:
+    add_origin(repo)
+    git(repo, "push", "-u", "origin", "develop")
+    save_flow(
+        repo,
+        GitFlow(
+            flow=GITFLOW,
+            main_branch="main",
+            develop_branch="develop",
+            base_branch="develop",
+            on_done="pr",
+            reviewers=("octocat", "acme/team"),
+            configured=True,
+        ),
+    )
+    session = Session.create(repo, text="add loader", mode="prompt", title="add loader")
+    ensure_task_branch(session)
+    (repo / "src.txt").write_text("x\n", encoding="utf-8")
+    reviewer_calls: list = []
+    monkeypatch.setattr(
+        "kcia.integrations.github_reviews.request_reviewers",
+        lambda repo, url, reviewers: reviewer_calls.append((url, tuple(reviewers))),
+    )
+    _fake_gh(monkeypatch)
+    monkeypatch.chdir(repo)
+    result = runner.invoke(app, ["done", "--yes"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert reviewer_calls == [
+        ("https://example.com/pull/1", ("octocat", "acme/team")),
+    ]
+    assert "Requested PR review from" in result.output
 
 
 def test_gitflow_pr_pushes_and_opens_a_pr(repo: Path, monkeypatch) -> None:

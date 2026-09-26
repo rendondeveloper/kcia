@@ -16,7 +16,8 @@ from kcia.git.commit import (
     plan_commits,
 )
 from kcia.git.cycle import close_cycle
-from kcia.git.flow import ON_DONE_MERGE, load_flow
+from kcia.git.flow import ON_DONE_MERGE, ON_DONE_PR, load_flow
+from kcia.integrations import github_reviews
 from kcia.git.repo import (
     GH_BIN,
     GitError,
@@ -251,6 +252,14 @@ def _finish_gitflow_merge(repo: Path, branch: str, base: str) -> str | None:
     return None
 
 
+def _request_configured_reviewers(repo: Path, pr_url: str) -> None:
+    flow = load_flow(repo)
+    if flow.uses_gitflow and flow.on_done == ON_DONE_PR and flow.reviewers:
+        github_reviews.request_reviewers(repo, pr_url, flow.reviewers)
+        names = ", ".join(flow.reviewers)
+        typer.echo(f"Requested PR review from: {names}")
+
+
 def _after_commit(
     repo: Path,
     *,
@@ -294,6 +303,8 @@ def _complete_saved_done(repo: Path, session: Session) -> None:
             checkpoint.update(refreshed.data.get("done_checkpoint", {}))
             if pr_url:
                 checkpoint["pull_request_url"] = pr_url
+                session.save()
+                _request_configured_reviewers(repo, pr_url)
             checkpoint["git_finished"] = True
             session.save()
         if auto_pr_cycle:
@@ -450,7 +461,11 @@ def commit_command(
             _complete_saved_done(repo, session)
         else:
             try:
-                _after_commit(repo, branch=branch, title=written[-1][1], session_base=session_base)
+                pr_url = _after_commit(
+                    repo, branch=branch, title=written[-1][1], session_base=session_base
+                )
+                if pr_url:
+                    _request_configured_reviewers(repo, pr_url)
                 close_cycle(repo)
             except GitError as exc:
                 typer.echo(str(exc))

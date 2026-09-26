@@ -587,17 +587,33 @@ mind, re-run `kcia init` with the flags, or edit the config:
 
 ```bash
 kcia branch config          # show it, and the path to the file
+kcia branch reviewer add octocat acme/mobile-reviewers
+kcia branch reviewer list
+kcia branch reviewer remove octocat
 ```
+
+When git flow closes a task with `on_done: pr`, KCIA can request review from GitHub
+users or organization teams you configure locally. GitHub sends notifications according
+to each reviewer's settings; KCIA does not send email. Reviewers need access to the
+repository, and your authenticated `gh` identity must be allowed to request review.
 
 ```yaml
 # .ai/local/git.yaml
-schema_version: 1
+schema_version: 2
 flow: gitflow               # or current-branch
 main_branch: main
 develop_branch: develop
 base_branch: develop        # new branches start here
 on_done: pr                 # git flow: `pr` or `merge` after `kcia done`
+reviewers:
+  - octocat
+  - acme/mobile-reviewers
 ```
+
+The reviewer list applies when KCIA opens or reuses a pull request during `kcia done`
+or a Jira cycle, and again after an automated review-repair pass pushes corrections.
+Changing reviewers does not retroactively update a PR that is already waiting for
+approval; the new list applies on the next open, resume, or repair completion.
 
 Non-interactive (`kcia init --yes`, CI) never blocks: git flow goes on when the repository
 already has a development branch, off otherwise.

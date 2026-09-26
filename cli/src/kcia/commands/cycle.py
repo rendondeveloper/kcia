@@ -87,6 +87,7 @@ def _configure_gitflow_pr(repo: Path, base_branch: str) -> None:
             develop_branch=current.develop_branch or base_branch,
             base_branch=base_branch,
             on_done=ON_DONE_PR,
+            reviewers=current.reviewers,
             configured=True,
         ),
     )
@@ -239,9 +240,19 @@ def _finish_review(repo: Path, session: Session) -> None:
         session.save()
     history = session.data.setdefault("handled_reviews", [])
     history.extend(github.fingerprint(o) for o in repair["observations"])
+    flow = load_flow(repo)
+    if flow.reviewers:
+        github.request_reviewers(repo, url, flow.reviewers)
+        typer.echo(
+            "Review corrections pushed; configured reviewers were re-requested on GitHub."
+        )
+    else:
+        typer.echo(
+            "Review corrections pushed and verified conversations resolved; "
+            "waiting for fresh approval."
+        )
     repair["phase"] = "complete"
     session.save()
-    typer.echo("Review corrections pushed and verified conversations resolved; waiting for fresh approval.")
 
 
 def _handle_waiting_pr(repo: Path, session: Session) -> bool:
