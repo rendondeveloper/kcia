@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
@@ -12,11 +13,15 @@ from kcia.git.commit import COMMIT_TYPES, infer_commit_type
 from kcia.git.cycle import is_cycle_open, open_cycle
 from kcia.git.flow import (
     BaseBranch,
+    ON_DONE_PR,
     branch_name,
     detect_base_branch,
     git_config_path,
+    GitFlowConfigError,
     load_flow,
+    normalize_reviewer_identifier,
     save_base_branch,
+    save_flow,
 )
 from kcia.git.repo import (
     GitError,
@@ -120,8 +125,134 @@ def branch_config() -> None:
         typer.echo(f"  base:    {flow.base_branch}")
     if flow.uses_gitflow:
         typer.echo(f"  on done: {flow.on_done}")
+        if flow.on_done == ON_DONE_PR:
+            if flow.reviewers:
+                typer.echo(f"  reviewers: {', '.join(flow.reviewers)}")
+            else:
+                typer.echo("  reviewers: none")
     typer.echo("")
     typer.echo(f"Edit {git_config_path(repo)} to change it.")
+
+
+def _require_initialized_flow(repo: Path):
+    try:
+        flow = load_flow(repo)
+    except GitFlowConfigError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    if not flow.configured:
+        typer.echo("Git flow is not configured yet. Run `kcia init` first.")
+        raise typer.Exit(code=1)
+    return flow
+
+
+def _pr_reviewer_inactive_hint(flow) -> None:
+    if flow.uses_gitflow and flow.on_done == ON_DONE_PR:
+        return
+    typer.echo(
+        "Note: reviewers apply only when git flow closes tasks with `on_done: pr`."
+    )
+
+
+reviewer_app = typer.Typer(help="Configure GitHub PR reviewers for KCIA-opened pull requests.")
+app.add_typer(reviewer_app, name="reviewer")
+
+
+@reviewer_app.command("add")
+def reviewer_add(
+    handles: list[str] = typer.Argument(..., help="GitHub user or organization/team slug."),
+) -> None:
+    """Add one or more PR reviewers stored in `.ai/local/git.yaml`."""
+    repo = load_repo()
+    flow = _require_initialized_flow(repo)
+    normalized: list[str] = []
+    for handle in handles:
+        try:
+            normalized.append(normalize_reviewer_identifier(handle))
+        except ValueError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=1) from exc
+    by_key = {item.casefold(): item for item in flow.reviewers}
+    added: list[str] = []
+    already: list[str] = []
+    for handle in normalized:
+        key = handle.casefold()
+        if key in by_key:
+            already.append(by_key[key])
+            continue
+        by_key[key] = handle
+        added.append(handle)
+    if added:
+        order_keys = [item.casefold() for item in flow.reviewers]
+        order_keys.extend(item.casefold() for item in added)
+        seen: set[str] = set()
+        merged_list: list[str] = []
+        for key in order_keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            merged_list.append(by_key[key])
+        save_flow(repo, replace(flow, reviewers=tuple(merged_list)))
+    if added:
+        typer.echo("Added PR reviewers:")
+        for name in added:
+            typer.echo(f"  {name}")
+    if already:
+        typer.echo("Already configured:")
+        for name in already:
+            typer.echo(f"  {name}")
+    if added or already:
+        typer.echo("GitHub will request these reviewers when KCIA opens or resumes a PR.")
+    _pr_reviewer_inactive_hint(flow)
+
+
+@reviewer_app.command("remove")
+def reviewer_remove(
+    handles: list[str] = typer.Argument(..., help="GitHub user or organization/team slug."),
+) -> None:
+    """Remove one or more configured PR reviewers."""
+    repo = load_repo()
+    flow = _require_initialized_flow(repo)
+    normalized: list[str] = []
+    for handle in handles:
+        try:
+            normalized.append(normalize_reviewer_identifier(handle))
+        except ValueError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=1) from exc
+    remove_keys = {handle.casefold() for handle in normalized}
+    remaining = [item for item in flow.reviewers if item.casefold() not in remove_keys]
+    found_keys = {item.casefold() for item in flow.reviewers} & remove_keys
+    missing = [handle for handle in normalized if handle.casefold() not in found_keys]
+    if missing:
+        typer.echo(f"Reviewer not configured: {', '.join(missing)}")
+        raise typer.Exit(code=1)
+    removed = [item for item in flow.reviewers if item.casefold() in remove_keys]
+    save_flow(repo, replace(flow, reviewers=tuple(remaining)))
+    typer.echo("Removed PR reviewers:")
+    for name in removed:
+        typer.echo(f"  {name}")
+    if remaining:
+        typer.echo("Configured PR reviewers:")
+        for name in remaining:
+            typer.echo(f"  {name}")
+    else:
+        typer.echo("No PR reviewers configured.")
+
+
+@reviewer_app.command("list")
+def reviewer_list() -> None:
+    """List configured PR reviewers."""
+    repo = load_repo()
+    flow = _require_initialized_flow(repo)
+    if not flow.reviewers:
+        typer.echo("No PR reviewers configured.")
+        typer.echo("Add one with `kcia branch reviewer add <github-handle>`.")
+        return
+    typer.echo("Configured PR reviewers:")
+    for name in flow.reviewers:
+        typer.echo(f"  {name}")
+    typer.echo("Used by normal and Jira-cycle PR flows.")
 
 
 @app.command("base")

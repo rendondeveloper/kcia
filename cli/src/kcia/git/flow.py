@@ -41,7 +41,11 @@ OnDone = Literal["pr", "merge"]
 MAX_SLUG_WORDS = 6
 MAX_SLUG_LENGTH = 48
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+class GitFlowConfigError(ValueError):
+    """Invalid `.ai/local/git.yaml` content."""
 
 
 def git_config_path(repo_root: Path) -> Path:
@@ -57,6 +61,7 @@ class GitFlow:
     develop_branch: str | None = None
     base_branch: str | None = None
     on_done: str = ON_DONE_PR
+    reviewers: tuple[str, ...] = ()
     configured: bool = False
 
     @property
@@ -74,11 +79,55 @@ class GitFlow:
         return "no git flow — every task is done on the current branch"
 
 
+def normalize_reviewer_identifier(value: object) -> str:
+    """Normalize one GitHub user or organization/team slug for local storage."""
+    if not isinstance(value, str):
+        raise ValueError("each reviewer must be a string")
+    text = value.strip()
+    if text.startswith("@"):
+        text = text[1:].strip()
+    if not text:
+        raise ValueError("reviewer cannot be empty")
+    if "," in text or any(ord(char) < 32 or char.isspace() for char in text):
+        raise ValueError(f"invalid reviewer `{value}`")
+    parts = text.split("/")
+    if len(parts) > 2:
+        raise ValueError(f"invalid team reviewer `{value}`")
+    if len(parts) == 2 and (not parts[0] or not parts[1]):
+        raise ValueError(f"invalid team reviewer `{value}`")
+    return text
+
+
+def normalize_reviewers_list(value: object) -> tuple[str, ...]:
+    """Normalize an ordered reviewer list, collapsing case-insensitive duplicates."""
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("reviewers must be a YAML list of GitHub handles or team slugs")
+    seen: dict[str, str] = {}
+    ordered: list[str] = []
+    for item in value:
+        normalized = normalize_reviewer_identifier(item)
+        key = normalized.casefold()
+        if key not in seen:
+            seen[key] = normalized
+            ordered.append(normalized)
+    return tuple(ordered)
+
+
+def _load_reviewers(data: dict, path: Path) -> tuple[str, ...]:
+    try:
+        return normalize_reviewers_list(data.get("reviewers"))
+    except ValueError as exc:
+        raise GitFlowConfigError(f"{path}: {exc}") from exc
+
+
 def load_flow(repo_root: Path) -> GitFlow:
     path = git_config_path(repo_root)
     if not path.is_file():
         return GitFlow()
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    reviewers = _load_reviewers(data, path)
     flow = data.get("flow")
     if flow not in (GITFLOW, CURRENT_BRANCH):
         # Written by an older kcia, which only recorded `base_branch`.
@@ -89,6 +138,7 @@ def load_flow(repo_root: Path) -> GitFlow:
             develop_branch=data.get("develop_branch"),
             base_branch=base,
             on_done=normalize_on_done(data.get("on_done")),
+            reviewers=reviewers,
             configured=bool(base),
         )
     return GitFlow(
@@ -97,6 +147,7 @@ def load_flow(repo_root: Path) -> GitFlow:
         develop_branch=data.get("develop_branch"),
         base_branch=data.get("base_branch"),
         on_done=normalize_on_done(data.get("on_done")),
+        reviewers=reviewers,
         configured=True,
     )
 
@@ -111,6 +162,7 @@ def save_flow(repo_root: Path, flow: GitFlow) -> Path:
         "develop_branch": flow.develop_branch,
         "base_branch": flow.base_branch,
         "on_done": flow.on_done,
+        "reviewers": list(flow.reviewers),
     }
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path
@@ -216,6 +268,7 @@ def save_base_branch(repo_root: Path, base: str) -> None:
             develop_branch=current.develop_branch or base,
             base_branch=base,
             on_done=current.on_done,
+            reviewers=current.reviewers,
             configured=True,
         ),
     )

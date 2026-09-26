@@ -134,6 +134,17 @@ def approved(pr: dict) -> bool:
     return True
 
 
+def request_reviewers(repo: Path, pr_url: str, reviewers: tuple[str, ...] | list[str]) -> None:
+    """Ask GitHub to request (or re-request) review from each configured identifier."""
+    ordered = tuple(reviewers)
+    if not ordered:
+        return
+    args = ["pr", "edit", pr_url]
+    for handle in ordered:
+        args.extend(["--add-reviewer", handle])
+    gh(repo, *args, json_output=False)
+
+
 def merge(repo: Path, url: str, head: str) -> None:
     # GitHub rejects a changed head and enforces branch protection; never --admin.
     gh(repo, "pr", "merge", url, "--merge", "--match-head-commit", head, json_output=False)

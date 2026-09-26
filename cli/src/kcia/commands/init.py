@@ -206,6 +206,7 @@ def _configure_git_flow(
                 develop_branch=existing.develop_branch,
                 base_branch=existing.base_branch,
                 on_done=requested_on_done,
+                reviewers=existing.reviewers,
                 configured=True,
             ),
         )
@@ -241,6 +242,7 @@ def _configure_git_flow(
                 flow=CURRENT_BRANCH,
                 main_branch=resolved_main,
                 develop_branch=resolved_develop,
+                reviewers=existing.reviewers,
                 configured=True,
             ),
         )
@@ -268,6 +270,7 @@ def _configure_git_flow(
             develop_branch=resolved_develop,
             base_branch=base,
             on_done=resolved_on_done,
+            reviewers=existing.reviewers,
             configured=True,
         ),
     )
